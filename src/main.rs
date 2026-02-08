@@ -1,30 +1,39 @@
-// src/main.rs (Fragmentos clave)
 use clap::{Parser, Subcommand};
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use colored::*;
+use anyhow::{Context, Result};
 use std::fs;
 use std::path::Path;
-use anyhow::Result;
+use serde::{Deserialize, Serialize};
+use dialoguer::{Select, theme::ColorfulTheme};
+use std::collections::HashMap;
 
-// --- MODELO DE DATOS (El Manifiesto) ---
+// --- MODELO DE DATOS (JSON) ---
 #[derive(Serialize, Deserialize, Debug)]
-struct SkillManifest {
-    version: String,
+struct SkillConfig {
+    editor: String, // "cursor", "antigravity", "vscode"
     skills: HashMap<String, SkillEntry>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 struct SkillEntry {
-    url: String,     // URL original del repo
-    branch: String,  // main, master, etc.
+    url: String,
     local_path: String,
-    last_updated: String,
 }
 
-// --- COMANDOS CLI ---
+impl Default for SkillConfig {
+    fn default() -> Self {
+        Self {
+            editor: "cursor".to_string(),
+            skills: HashMap::new(),
+        }
+    }
+}
+
+// --- CLI ARGUMENTS ---
 #[derive(Parser)]
 #[command(name = "skillctl")]
-#[command(about = "Gestor de Skills para Agentes de IA", long_about = None)]
+#[command(version = "1.0.0")]
+#[command(about = "Gestor de Skills tipo Vercel", long_about = None)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -32,206 +41,187 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Inicializa un nuevo proyecto de skills
+    /// Inicializa el proyecto y elige editor
     Init,
-    /// Añade una nueva skill al proyecto
-    Add { url: String, skill: String },
-    /// Re-descarga todas las skills desde sus URLs originales
-    Update,
-    /// Genera los archivos de configuración para los editores detectados
-    Sync {
-        #[arg(short, long)]
-        editors: Vec<String>, // ej: --editors cursor,antigravity
+    /// Añade una skill. Uso: skillctl add <URL> --skill <NOMBRE>
+    Add {
+        url: String,
+        /// Nombre de la skill a extraer
+        #[arg(long)] // Esto hace que sea --skill <nombre>
+        skill: String,
     },
-    /// Lista todas las skills instaladas
-    List,
+    /// Instala todas las skills definidas en skills.json
+    Install,
 }
 
-// --- LÓGICA DE UPDATE ---
-fn update_skills() -> Result<()> {
-    let manifest_path = Path::new("skills.toml");
-    if !manifest_path.exists() {
-        println!("❌ No se encontró skills.toml. Usa 'add' primero.");
-        return Ok(());
-    }
-
-    let content = fs::read_to_string(manifest_path)?;
-    let mut manifest: SkillManifest = toml::from_str(&content)?;
-
-    println!("🔄 Buscando actualizaciones para {} skills...", manifest.skills.len());
-
-    for (name, entry) in &manifest.skills {
-        println!("   ⬇️ Actualizando {}...", name);
-        // Reutilizamos la lógica de descarga (download_file)
-        // Aquí podrías comprobar hashes git si quisieras ser muy preciso,
-        // pero re-descargar el RAW file es rápido y efectivo.
-        download_skill_file(&entry.url, &entry.branch, name)?;
-    }
-    
-    // Actualizamos timestamp en el toml (opcional)
-    fs::write(manifest_path, toml::to_string(&manifest)?)?;
-    
-    println!("✅ Todas las skills están al día.");
-    // Auto-ejecutamos sync para reflejar cambios
-    sync_editors(vec!["cursor".to_string(), "antigravity".to_string()])?;
-    
-    Ok(())
-}
-
-// --- LÓGICA DE SYNC MULTI-EDITOR ---
-fn sync_editors(targets: Vec<String>) -> Result<()> {
-    let manifest = load_manifest()?; // Función helper que lee skills.toml
-
-    for editor in targets {
-        match editor.as_str() {
-            "cursor" => generate_cursor_config(&manifest)?,
-            "antigravity" => generate_antigravity_config(&manifest)?,
-            "vscode" => generate_vscode_config(&manifest)?, // Copilot instructions
-            _ => println!("⚠️ Editor desconocido: {}", editor),
-        }
-    }
-    Ok(())
-}
-
-// Generador para Cursor (.cursorrules)
-fn generate_cursor_config(manifest: &SkillManifest) -> Result<()> {
-    let mut instructions = String::from("# Rules generadas por Skill-CLI\n\n");
-    
-    for (name, entry) in &manifest.skills {
-        // Opción A: Referencia al archivo (si el editor sabe leer paths)
-        instructions.push_str(&format!("## Skill: {}\n", name));
-        instructions.push_str(&format!("Reference: .cursor/skills/{}/SKILL.md\n\n", name));
-        
-        // Opción B (Más robusta): Leer el contenido e inyectarlo si es pequeño
-        // let content = fs::read_to_string(&entry.local_path)?;
-        // instructions.push_str(&content);
-    }
-
-    fs::write(".cursorrules", instructions)?;
-    println!("✅ .cursorrules actualizado.");
-    Ok(())
-}
-
-// Generador para Antigravity (.antigravity)
-fn generate_antigravity_config(manifest: &SkillManifest) -> Result<()> {
-    // Supongamos que Antigravity usa JSON o un formato diferente
-    // O tal vez soporta "Symlinks" virtuales.
-    
-    let mut config_lines = Vec::new();
-    config_lines.push("PROJECT_CONTEXT:".to_string());
-
-    for (name, entry) in &manifest.skills {
-        // Imaginemos que Antigravity necesita path absoluto
-        let abs_path = fs::canonicalize(&entry.local_path)?;
-        config_lines.push(format!("  - IMPORT_SKILL: {}", abs_path.display()));
-    }
-
-    fs::write(".antigravity", config_lines.join("\n"))?;
-    println!("✅ .antigravity actualizado.");
-    Ok(())
-}
-
-// Generador para VSCode (.github/copilot-instructions.md)
-fn generate_vscode_config(manifest: &SkillManifest) -> Result<()> {
-    let mut instructions = String::from("# GitHub Copilot Instructions\n\n");
-    
-    for (name, entry) in &manifest.skills {
-        instructions.push_str(&format!("## Skill: {}\n", name));
-        instructions.push_str(&format!("Path: {}\n\n", entry.local_path));
-    }
-
-    fs::create_dir_all(".github")?;
-    fs::write(".github/copilot-instructions.md", instructions)?;
-    println!("✅ .github/copilot-instructions.md actualizado.");
-    Ok(())
-}
-
-// --- LÓGICA DE INIT ---
-fn init_project() -> Result<()> {
-    let manifest_path = Path::new("skills.toml");
-    if manifest_path.exists() {
-        println!("⚠️  El archivo skills.toml ya existe.");
-        return Ok(());
-    }
-
-    let default_content = r#"# Manifiesto de Skills
-version = "1.0"
-
-[skills]
-# Las skills se añadirán aquí automáticamente al usar 'add'
-"#;
-
-    fs::write(manifest_path, default_content)?;
-    
-    // Crear carpetas necesarias
-    fs::create_dir_all(".cursor/skills")?;
-    
-    println!("✅ Proyecto inicializado. Se ha creado 'skills.toml'.");
-    println!("🚀 Prueba ahora: npx skillctl add <url> --skill <nombre>");
-    
-    Ok(())
-}
-
-// --- LÓGICA DE LIST ---
-fn list_skills() -> Result<()> {
-    let manifest_path = Path::new("skills.toml");
-    if !manifest_path.exists() {
-        println!("❌ No se encontró skills.toml. Ejecuta 'skillctl init' primero.");
-        return Ok(());
-    }
-
-    let content = fs::read_to_string(manifest_path)?;
-    let manifest: SkillManifest = toml::from_str(&content)?;
-
-    if manifest.skills.is_empty() {
-        println!("📦 No hay skills instaladas.");
-        println!("💡 Usa 'skillctl add <url> --skill <nombre>' para añadir una.");
-    } else {
-        println!("📦 Skills instaladas ({}):", manifest.skills.len());
-        for (name, entry) in &manifest.skills {
-            println!("  • {} ({})", name, entry.url);
-            println!("    └─ Branch: {} | Path: {}", entry.branch, entry.local_path);
-        }
-    }
-    
-    Ok(())
-}
-
-// --- HELPER: Cargar manifiesto ---
-fn load_manifest() -> Result<SkillManifest> {
-    let manifest_path = Path::new("skills.toml");
-    if !manifest_path.exists() {
-        anyhow::bail!("No se encontró skills.toml. Ejecuta 'skillctl init' primero.");
-    }
-    
-    let content = fs::read_to_string(manifest_path)?;
-    let manifest: SkillManifest = toml::from_str(&content)?;
-    Ok(manifest)
-}
-
-// --- HELPER: Descargar archivo de skill ---
-fn download_skill_file(url: &str, branch: &str, name: &str) -> Result<()> {
-    // Implementación simplificada - aquí iría la lógica real de descarga
-    println!("   ⬇️ Descargando {} desde {} (branch: {})", name, url, branch);
-    // TODO: Implementar descarga real usando reqwest o similar
-    Ok(())
-}
-
-// --- FUNCIÓN PRINCIPAL ---
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match &cli.command {
         Commands::Init => init_project()?,
-        Commands::Add { url, skill } => {
-            println!("🔧 Añadiendo skill '{}' desde {}...", skill, url);
-            // Aquí iría la lógica de add_skill(url, skill)
-            println!("⚠️  Comando 'add' aún no implementado completamente.");
-        }
-        Commands::Update => update_skills()?,
-        Commands::Sync { editors } => sync_editors(editors.clone())?,
-        Commands::List => list_skills()?,
+        Commands::Add { url, skill } => add_skill(url, skill)?,
+        Commands::Install => install_all()?,
+    }
+    Ok(())
+}
+
+// --- COMANDO: INIT (Interactivo) ---
+fn init_project() -> Result<()> {
+    let config_path = Path::new("skills.json");
+    if config_path.exists() {
+        println!("⚠️  Ya existe 'skills.json'.");
+        return Ok(());
     }
 
+    println!("{}", "🚀 Inicializando Skill Controller...".bold().cyan());
+
+    // Menú interactivo
+    let editors = vec!["Cursor (.cursor/skills)", "Antigravity (.antigravity)", "VSCode (.vscode)"];
+    let selection = Select::with_theme(&ColorfulTheme::default())
+        .with_prompt("¿Qué editor vas a usar?")
+        .default(0)
+        .items(&editors)
+        .interact()
+        .unwrap();
+
+    let editor_key = match selection {
+        0 => "cursor",
+        1 => "antigravity",
+        _ => "vscode",
+    };
+
+    let config = SkillConfig {
+        editor: editor_key.to_string(),
+        skills: HashMap::new(),
+    };
+
+    save_config(&config)?;
+    
+    // Crear carpeta base según editor
+    let base_dir = get_skills_dir(editor_key);
+    fs::create_dir_all(&base_dir)?;
+
+    println!("✅ Configuración guardada en 'skills.json'. Editor: {}", editor_key.green());
+    Ok(())
+}
+
+// --- COMANDO: ADD ---
+fn add_skill(repo_url: &str, skill_name: &str) -> Result<()> {
+    // 1. Cargar config para saber dónde guardar
+    let mut config = load_config()?;
+    let skills_dir = get_skills_dir(&config.editor);
+
+    println!("{} {}...", "📦 Añadiendo skill:".blue(), skill_name);
+
+    // 2. Lógica de descarga (GitHub Raw)
+    let raw_base = repo_url
+        .replace("github.com", "raw.githubusercontent.com")
+        .trim_end_matches('/')
+        .to_string();
+    
+    // URL: .../main/skills/{nombre}/SKILL.md (Ajustar según estructura real del repo)
+    let target_url = format!("{}/main/skills/{}/SKILL.md", raw_base, skill_name);
+    
+    // 3. Descargar
+    let content = download_file(&target_url)?;
+
+    // 4. Guardar archivo
+    let skill_folder = skills_dir.join(skill_name);
+    fs::create_dir_all(&skill_folder)?;
+    let file_path = skill_folder.join("SKILL.md");
+    fs::write(&file_path, &content)?;
+
+    println!("✅ Skill guardada en: {:?}", file_path);
+
+    // 5. Actualizar JSON
+    config.skills.insert(skill_name.to_string(), SkillEntry {
+        url: repo_url.to_string(),
+        local_path: file_path.to_string_lossy().to_string(),
+    });
+    save_config(&config)?;
+
+    // 6. Actualizar configuración del editor (Integración)
+    update_editor_config(&config.editor, skill_name, &file_path)?;
+
+    Ok(())
+}
+
+// --- COMANDO: INSTALL ---
+fn install_all() -> Result<()> {
+    let config = load_config().context("No se encontró skills.json. Ejecuta 'init' primero.")?;
+    
+    println!("🔄 Restaurando {} skills para {}...", config.skills.len(), config.editor);
+
+    for (name, entry) in &config.skills {
+        // Re-usamos la lógica de add pero sin duplicar entradas en el json
+        // (Aquí simplificado: solo descargamos el archivo de nuevo)
+        
+        let raw_base = entry.url
+            .replace("github.com", "raw.githubusercontent.com")
+            .trim_end_matches('/')
+            .to_string();
+        let target_url = format!("{}/main/skills/{}/SKILL.md", raw_base, name);
+
+        match download_file(&target_url) {
+            Ok(content) => {
+                let path = Path::new(&entry.local_path);
+                if let Some(parent) = path.parent() {
+                    fs::create_dir_all(parent)?;
+                }
+                fs::write(path, content)?;
+                println!(" - ✅ {}", name);
+            },
+            Err(_) => println!(" - ❌ Error descargando {}", name),
+        }
+    }
+    println!("✨ Instalación completada.");
+    Ok(())
+}
+
+// --- HELPERS ---
+
+fn get_skills_dir(editor: &str) -> std::path::PathBuf {
+    match editor {
+        "antigravity" => Path::new(".antigravity/skills").to_path_buf(),
+        "vscode" => Path::new(".vscode/skills").to_path_buf(),
+        _ => Path::new(".cursor/skills").to_path_buf(), // Default
+    }
+}
+
+fn load_config() -> Result<SkillConfig> {
+    let content = fs::read_to_string("skills.json")?;
+    let config: SkillConfig = serde_json::from_str(&content)?;
+    Ok(config)
+}
+
+fn save_config(config: &SkillConfig) -> Result<()> {
+    let content = serde_json::to_string_pretty(config)?;
+    fs::write("skills.json", content)?;
+    Ok(())
+}
+
+fn download_file(url: &str) -> Result<String> {
+    let resp = reqwest::blocking::get(url)?;
+    if !resp.status().is_success() {
+        anyhow::bail!("404 Not Found");
+    }
+    Ok(resp.text()?)
+}
+
+fn update_editor_config(editor: &str, skill_name: &str, path: &Path) -> Result<()> {
+    // Aquí implementas la lógica específica para inyectar en .cursorrules o .antigravity
+    // Ejemplo simple para cursor:
+    if editor == "cursor" {
+        let rule_file = Path::new(".cursorrules");
+        let line = format!("\n# Skill: {}\nReference: {}\n", skill_name, path.display());
+        
+        // Append
+        let mut file = fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(rule_file)?;
+        use std::io::Write;
+        write!(file, "{}", line)?;
+    }
     Ok(())
 }
