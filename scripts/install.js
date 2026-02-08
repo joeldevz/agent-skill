@@ -5,8 +5,8 @@ const os = require('os');
 
 // Configuración
 const REPO = "joeldevz/agent-skill";
-const VERSION = "v0.0.2"; // ¡CAMBIA ESTO PARA QUE COINCIDA CON TU TAG DE GITHUB!
-const BIN_NAME = "agent-skill";
+const VERSION = "v0.0.3"; // ¡CAMBIA ESTO PARA QUE COINCIDA CON TU TAG DE GITHUB!
+const BIN_NAME = "skillctl";
 
 // Detectar plataforma
 const platform = os.platform(); // 'darwin', 'linux', 'win32'
@@ -36,7 +36,7 @@ if (!fs.existsSync(binDir)) {
     fs.mkdirSync(binDir);
 }
 
-const destPath = path.join(binDir, `agent-skill${extension}`);
+const destPath = path.join(binDir, `skillctl${extension}`);
 
 console.log(`⬇️  Descargando ${BIN_NAME} desde: ${downloadUrl}`);
 

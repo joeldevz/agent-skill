@@ -1,4 +1,4 @@
-# Agent Skill Tool
+# Skillctl: Agent Skill Manager
 
 Gestor de Skills para Agentes de IA (Cursor, Antigravity, VSCode Copilot)
 
@@ -10,19 +10,19 @@ No necesitas instalar nada globalmente. Simplemente usa `npx`:
 
 ```bash
 # 1. Inicializar un nuevo proyecto
-npx agent-skill init
+npx skillctl init
 
 # 2. Añadir una skill
-npx agent-skill add https://github.com/wshobson/agents --skill typescript
+npx skillctl add https://github.com/wshobson/agents --skill typescript
 
 # 3. Listar skills instaladas
-npx agent-skill list
+npx skillctl list
 
 # 4. Actualizar todas las skills
-npx agent-skill update
+npx skillctl update
 
 # 5. Sincronizar con editores
-npx agent-skill sync --editors cursor,antigravity
+npx skillctl sync --editors cursor,antigravity
 ```
 
 ## 🔧 Desarrollo: Ciclo de Vida del Proyecto
@@ -50,7 +50,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 # Compilar en modo release
 cargo build --release
 
-# El binario estará en: target/release/agent-skill
+# El binario estará en: target/release/skillctl
 ```
 
 ### Paso 2: Crear el Release en GitHub (Primera vez)
@@ -71,9 +71,9 @@ cargo build --release
    - Tag: `v0.0.1`
    - Title: `v0.0.1 - Initial Release`
    - **Sube los binarios compilados:**
-     - `target/release/agent-skill` → Renombrar a `agent-skill-linux`
-     - Para Windows: `target/release/agent-skill.exe` → Renombrar a `agent-skill-win.exe`
-     - Para macOS: compilar en Mac y renombrar a `agent-skill-macos`
+     - `target/release/skillctl` → Renombrar a `skillctl-linux`
+     - Para Windows: `target/release/skillctl.exe` → Renombrar a `skillctl-win.exe`
+     - Para macOS: compilar en Mac y renombrar a `skillctl-macos`
    - Publica la Release
 
 ### Paso 3: Probar la Descarga Localmente

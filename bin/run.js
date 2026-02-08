@@ -5,7 +5,7 @@ const path = require('path');
 const os = require('os');
 
 const extension = os.platform() === 'win32' ? '.exe' : '';
-const binPath = path.join(__dirname, `agent-skill${extension}`);
+const binPath = path.join(__dirname, `skillctl${extension}`);
 
 if (!require('fs').existsSync(binPath)) {
     console.error('❌ El binario no se encuentra. Intenta ejecutar: npm install --force');

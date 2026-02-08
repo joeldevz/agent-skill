@@ -1,4 +1,4 @@
-# Ejemplo de Uso: Agent Skill Tool
+# Ejemplo de Uso: Skillctl
 
 ## Escenario: Configurar un Proyecto Nuevo
 
@@ -17,7 +17,7 @@ npx skill-cli-tool init
 
 ```
 ✅ Proyecto inicializado. Se ha creado 'skills.toml'.
-🚀 Prueba ahora: npx skill-cli add <url> --skill <nombre>
+🚀 Prueba ahora: npx skillctl add <url> --skill <nombre>
 ```
 
 **Archivos creados:**
@@ -29,13 +29,13 @@ npx skill-cli-tool init
 
 ```bash
 # Añadir skill de TypeScript
-npx agent-skill add https://github.com/wshobson/agents --skill typescript
+npx skillctl add https://github.com/wshobson/agents --skill typescript
 
 # Añadir skill de Python
-npx agent-skill add https://github.com/wshobson/agents --skill python
+npx skillctl add https://github.com/wshobson/agents --skill python
 
 # Añadir skill personalizada
-npx agent-skill add https://github.com/tu-usuario/tu-repo --skill custom-skill
+npx skillctl add https://github.com/tu-usuario/tu-repo --skill custom-skill
 ```
 
 ### 3. Ver Skills Instaladas
@@ -135,7 +135,7 @@ Una vez sincronizado, Cursor automáticamente:
 **Ejemplo de `.cursorrules` generado:**
 
 ```markdown
-# Rules generadas por Agent Skill
+# Rules generadas por Skillctl
 
 ## Skill: typescript
 
@@ -150,13 +150,13 @@ Reference: .cursor/skills/python/SKILL.md
 
 ```bash
 # Mañana: Actualizar skills
-npx agent-skill update
+npx skillctl update
 
 # Durante el día: Añadir nueva skill si es necesario
-npx agent-skill add <url> --skill <nombre>
+npx skillctl add <url> --skill <nombre>
 
 # Verificar configuración
-npx agent-skill list
+npx skillctl list
 ```
 
 ## Compartir Configuración con el Equipo

@@ -1,9 +1,9 @@
 {
-  "name": "agent-skill", 
-  "version": "0.0.2",
+  "name": "skillctl", 
+  "version": "0.0.3",
   "description": "Gestor de Skills para Agentes de IA",
   "bin": {
-    "agent-skill": "./bin/run.js"
+    "skillctl": "./bin/run.js"
   },
   "scripts": {
     "postinstall": "node scripts/install.js"

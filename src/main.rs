@@ -23,7 +23,7 @@ struct SkillEntry {
 
 // --- COMANDOS CLI ---
 #[derive(Parser)]
-#[command(name = "agent-skill")]
+#[command(name = "skillctl")]
 #[command(about = "Gestor de Skills para Agentes de IA", long_about = None)]
 struct Cli {
     #[command(subcommand)]
@@ -167,7 +167,7 @@ version = "1.0"
     fs::create_dir_all(".cursor/skills")?;
     
     println!("✅ Proyecto inicializado. Se ha creado 'skills.toml'.");
-    println!("🚀 Prueba ahora: npx agent-skill add <url> --skill <nombre>");
+    println!("🚀 Prueba ahora: npx skillctl add <url> --skill <nombre>");
     
     Ok(())
 }
@@ -176,7 +176,7 @@ version = "1.0"
 fn list_skills() -> Result<()> {
     let manifest_path = Path::new("skills.toml");
     if !manifest_path.exists() {
-        println!("❌ No se encontró skills.toml. Ejecuta 'agent-skill init' primero.");
+        println!("❌ No se encontró skills.toml. Ejecuta 'skillctl init' primero.");
         return Ok(());
     }
 
@@ -185,7 +185,7 @@ fn list_skills() -> Result<()> {
 
     if manifest.skills.is_empty() {
         println!("📦 No hay skills instaladas.");
-        println!("💡 Usa 'agent-skill add <url> --skill <nombre>' para añadir una.");
+        println!("💡 Usa 'skillctl add <url> --skill <nombre>' para añadir una.");
     } else {
         println!("📦 Skills instaladas ({}):", manifest.skills.len());
         for (name, entry) in &manifest.skills {
@@ -201,7 +201,7 @@ fn list_skills() -> Result<()> {
 fn load_manifest() -> Result<SkillManifest> {
     let manifest_path = Path::new("skills.toml");
     if !manifest_path.exists() {
-        anyhow::bail!("No se encontró skills.toml. Ejecuta 'agent-skill init' primero.");
+        anyhow::bail!("No se encontró skills.toml. Ejecuta 'skillctl init' primero.");
     }
     
     let content = fs::read_to_string(manifest_path)?;
