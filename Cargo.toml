@@ -1,13 +1,13 @@
 [package]
-name = "skill-cli"
-version = "0.0.1"
+name = "agent-skill"
+version = "0.0.2"
 edition = "2021"
 authors = ["Your Name <your.email@example.com>"]
 description = "Gestor de Skills para Agentes de IA"
 license-file = "LICENSE"
 
 [[bin]]
-name = "skill-cli"
+name = "agent-skill"
 path = "src/main.rs"
 
 [dependencies]

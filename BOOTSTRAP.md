@@ -7,7 +7,7 @@ Esta guía te ayudará a publicar la primera versión del proyecto y resolver el
 Publicar la versión `v0.0.1` del proyecto para que los usuarios puedan ejecutar:
 
 ```bash
-npx skill-cli-tool init
+npx agent-skill init
 ```
 
 ## 📋 Pre-requisitos
@@ -36,17 +36,17 @@ ls -lh target/release/skill-cli
 **Resultado esperado:**
 
 ```
--rwxr-xr-x 1 user user 3.2M Feb  8 22:30 target/release/skill-cli
+-rwxr-xr-x 1 user user 3.2M Feb  8 22:30 target/release/agent-skill
 ```
 
 ### Paso 2: Probar el Binario Localmente
 
 ```bash
 # Ejecutar el binario directamente
-./target/release/skill-cli --help
+./target/release/agent-skill --help
 
 # Probar el comando init
-./target/release/skill-cli init
+./target/release/agent-skill init
 
 # Verificar que se creó skills.toml
 cat skills.toml
@@ -94,7 +94,7 @@ Este es el paso más importante. **Sin este paso, el script de NPM no podrá des
      ### Instalación
 
      ```bash
-     npx skill-cli-tool init
+     npx agent-skill init
      ```
      ````
 
@@ -104,8 +104,8 @@ Este es el paso más importante. **Sin este paso, el script de NPM no podrá des
 
 5. **IMPORTANTE: Subir los binarios**
    - Click en "Attach binaries by dropping them here or selecting them"
-   - Sube el archivo: `target/release/skill-cli`
-   - **RENOMBRA el archivo a:** `skill-cli-linux` (sin extensión)
+   - Sube el archivo: `target/release/agent-skill`
+   - **RENOMBRA el archivo a:** `agent-skill-linux` (sin extensión)
 
    > **Nota:** Para Windows y macOS, necesitarás compilar en esas plataformas o usar GitHub Actions (ver Opción B)
 
@@ -138,7 +138,7 @@ Esto activará el workflow `.github/workflows/release.yml` que:
 
    ```bash
    # Debería descargar el binario (no dar error 404)
-   curl -L https://github.com/joeldevz/agent-skill/releases/download/v0.0.1/skill-cli-linux -o test-binary
+   curl -L https://github.com/joeldevz/agent-skill/releases/download/v0.0.1/agent-skill-linux -o test-binary
 
    # Verificar que se descargó
    ls -lh test-binary
@@ -157,14 +157,14 @@ node scripts/install.js
 **Resultado esperado:**
 
 ```
-⬇️  Descargando skill-cli desde: https://github.com/joeldevz/agent-skill/releases/download/v0.0.1/skill-cli-linux
+⬇️  Descargando agent-skill desde: https://github.com/joeldevz/agent-skill/releases/download/v0.0.1/agent-skill-linux
 ✅ Instalación completada.
 ```
 
 **Verificar:**
 
 ```bash
-ls -lh bin/skill-cli
+ls -lh bin/agent-skill
 # Debería mostrar el binario descargado
 ```
 
@@ -194,7 +194,7 @@ npm publish
 **Resultado esperado:**
 
 ```
-+ skill-cli-tool@0.0.1
++ agent-skill@0.0.1
 ```
 
 ### Paso 9: Probar la Instalación desde NPM
@@ -205,7 +205,7 @@ mkdir /tmp/test-skill-cli
 cd /tmp/test-skill-cli
 
 # Probar con npx (sin instalar)
-npx skill-cli-tool init
+npx agent-skill init
 
 # Verificar que funcionó
 ls -la
@@ -233,7 +233,7 @@ ls -la
 
 1. Verifica que el release existe: https://github.com/joeldevz/agent-skill/releases
 2. Verifica que el tag es exactamente `v0.0.1`
-3. Verifica que el binario se llama exactamente `skill-cli-linux`
+3. Verifica que el binario se llama exactamente `agent-skill-linux`
 
 ### Error: "Permission denied" al ejecutar el binario
 
@@ -242,7 +242,7 @@ ls -la
 **Solución:**
 
 ```bash
-chmod +x bin/skill-cli
+chmod +x bin/agent-skill
 ```
 
 ### Error: "Package name already exists" en NPM
@@ -253,7 +253,7 @@ chmod +x bin/skill-cli
 
 1. Cambia el nombre en `package.json`:
    ```json
-   "name": "@tu-usuario/skill-cli-tool"
+   "name": "@tu-usuario/agent-skill"
    ```
 2. Publica de nuevo:
    ```bash
@@ -275,7 +275,7 @@ chmod +x bin/skill-cli
 Si llegaste aquí, tu proyecto está publicado y funcionando. Los usuarios ahora pueden ejecutar:
 
 ```bash
-npx skill-cli-tool init
+npx agent-skill init
 ```
 
 ## 📚 Próximos Pasos

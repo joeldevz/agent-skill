@@ -1,4 +1,4 @@
-# Ejemplo de Uso: Skill CLI Tool
+# Ejemplo de Uso: Agent Skill Tool
 
 ## Escenario: Configurar un Proyecto Nuevo
 
@@ -29,19 +29,19 @@ npx skill-cli-tool init
 
 ```bash
 # Añadir skill de TypeScript
-npx skill-cli-tool add https://github.com/wshobson/agents --skill typescript
+npx agent-skill add https://github.com/wshobson/agents --skill typescript
 
 # Añadir skill de Python
-npx skill-cli-tool add https://github.com/wshobson/agents --skill python
+npx agent-skill add https://github.com/wshobson/agents --skill python
 
 # Añadir skill personalizada
-npx skill-cli-tool add https://github.com/tu-usuario/tu-repo --skill custom-skill
+npx agent-skill add https://github.com/tu-usuario/tu-repo --skill custom-skill
 ```
 
 ### 3. Ver Skills Instaladas
 
 ```bash
-npx skill-cli-tool list
+npx agent-skill list
 ```
 
 **Resultado:**
@@ -58,10 +58,10 @@ npx skill-cli-tool list
 
 ```bash
 # Sincronizar con Cursor
-npx skill-cli-tool sync --editors cursor
+npx agent-skill sync --editors cursor
 
 # Sincronizar con múltiples editores
-npx skill-cli-tool sync --editors cursor,antigravity,vscode
+npx agent-skill sync --editors cursor,antigravity,vscode
 ```
 
 **Archivos generados:**
@@ -74,7 +74,7 @@ npx skill-cli-tool sync --editors cursor,antigravity,vscode
 
 ```bash
 # Actualizar todas las skills a sus últimas versiones
-npx skill-cli-tool update
+npx agent-skill update
 ```
 
 **Resultado:**
@@ -135,7 +135,7 @@ Una vez sincronizado, Cursor automáticamente:
 **Ejemplo de `.cursorrules` generado:**
 
 ```markdown
-# Rules generadas por Skill-CLI
+# Rules generadas por Agent Skill
 
 ## Skill: typescript
 
@@ -150,13 +150,13 @@ Reference: .cursor/skills/python/SKILL.md
 
 ```bash
 # Mañana: Actualizar skills
-npx skill-cli-tool update
+npx agent-skill update
 
 # Durante el día: Añadir nueva skill si es necesario
-npx skill-cli-tool add <url> --skill <nombre>
+npx agent-skill add <url> --skill <nombre>
 
 # Verificar configuración
-npx skill-cli-tool list
+npx agent-skill list
 ```
 
 ## Compartir Configuración con el Equipo
@@ -172,7 +172,7 @@ npx skill-cli-tool list
 2. **Otros miembros del equipo** solo necesitan:
    ```bash
    git pull
-   npx skill-cli-tool update  # Descarga todas las skills del manifiesto
+   npx agent-skill update  # Descarga todas las skills del manifiesto
    ```
 
 ## Troubleshooting

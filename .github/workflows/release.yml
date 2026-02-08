@@ -4,7 +4,8 @@ on:
   push:
     tags:
       - 'v*' # Se activa cuando subes un tag como v0.0.1
-
+permissions:
+  contents: write
 jobs:
   build:
     name: Build for ${{ matrix.os }}
@@ -13,14 +14,14 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            artifact_name: skill-cli
-            asset_name: skill-cli-linux
+            artifact_name: agent-skill
+            asset_name: agent-skill-linux
           - os: macos-latest
-            artifact_name: skill-cli
-            asset_name: skill-cli-macos
+            artifact_name: agent-skill
+            asset_name: agent-skill-macos
           - os: windows-latest
-            artifact_name: skill-cli.exe
-            asset_name: skill-cli-win.exe
+            artifact_name: agent-skill.exe
+            asset_name: agent-skill-win.exe
 
     steps:
     - uses: actions/checkout@v3

@@ -1,9 +1,9 @@
 {
-  "name": "skill-cli-tool", 
-  "version": "0.0.1",
+  "name": "agent-skill", 
+  "version": "0.0.2",
   "description": "Gestor de Skills para Agentes de IA",
   "bin": {
-    "skill-cli": "./bin/run.js"
+    "agent-skill": "./bin/run.js"
   },
   "scripts": {
     "postinstall": "node scripts/install.js"
