@@ -5,7 +5,7 @@ const os = require('os');
 
 // Configuración
 const REPO = "joeldevz/agent-skill";
-const VERSION = "v0.0.3"; // ¡CAMBIA ESTO PARA QUE COINCIDA CON TU TAG DE GITHUB!
+const VERSION = "v0.0.4"; // ¡CAMBIA ESTO PARA QUE COINCIDA CON TU TAG DE GITHUB!
 const BIN_NAME = "skillctl";
 
 // Detectar plataforma
