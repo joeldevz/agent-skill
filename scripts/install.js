@@ -6,7 +6,7 @@ const os = require('os');
 // Configuración
 const REPO = "joeldevz/agent-skill"; // ¡CAMBIA ESTO!
 const VERSION = "v0.0.1"; // ¡CAMBIA ESTO PARA QUE COINCIDA CON TU TAG DE GITHUB!
-const BIN_NAME = "agent-skill";
+const BIN_NAME = "skill-cli";
 
 // Detectar plataforma
 const platform = os.platform(); // 'darwin', 'linux', 'win32'

@@ -1,6 +1,10 @@
 // src/main.rs (Fragmentos clave)
+use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fs;
+use std::path::Path;
+use anyhow::Result;
 
 // --- MODELO DE DATOS (El Manifiesto) ---
 #[derive(Serialize, Deserialize, Debug)]
@@ -18,8 +22,19 @@ struct SkillEntry {
 }
 
 // --- COMANDOS CLI ---
+#[derive(Parser)]
+#[command(name = "skill-cli")]
+#[command(about = "Gestor de Skills para Agentes de IA", long_about = None)]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+}
+
 #[derive(Subcommand)]
 enum Commands {
+    /// Inicializa un nuevo proyecto de skills
+    Init,
+    /// Añade una nueva skill al proyecto
     Add { url: String, skill: String },
     /// Re-descarga todas las skills desde sus URLs originales
     Update,
@@ -28,6 +43,8 @@ enum Commands {
         #[arg(short, long)]
         editors: Vec<String>, // ej: --editors cursor,antigravity
     },
+    /// Lista todas las skills instaladas
+    List,
 }
 
 // --- LÓGICA DE UPDATE ---
@@ -111,5 +128,110 @@ fn generate_antigravity_config(manifest: &SkillManifest) -> Result<()> {
 
     fs::write(".antigravity", config_lines.join("\n"))?;
     println!("✅ .antigravity actualizado.");
+    Ok(())
+}
+
+// Generador para VSCode (.github/copilot-instructions.md)
+fn generate_vscode_config(manifest: &SkillManifest) -> Result<()> {
+    let mut instructions = String::from("# GitHub Copilot Instructions\n\n");
+    
+    for (name, entry) in &manifest.skills {
+        instructions.push_str(&format!("## Skill: {}\n", name));
+        instructions.push_str(&format!("Path: {}\n\n", entry.local_path));
+    }
+
+    fs::create_dir_all(".github")?;
+    fs::write(".github/copilot-instructions.md", instructions)?;
+    println!("✅ .github/copilot-instructions.md actualizado.");
+    Ok(())
+}
+
+// --- LÓGICA DE INIT ---
+fn init_project() -> Result<()> {
+    let manifest_path = Path::new("skills.toml");
+    if manifest_path.exists() {
+        println!("⚠️  El archivo skills.toml ya existe.");
+        return Ok(());
+    }
+
+    let default_content = r#"# Manifiesto de Skills
+version = "1.0"
+
+[skills]
+# Las skills se añadirán aquí automáticamente al usar 'add'
+"#;
+
+    fs::write(manifest_path, default_content)?;
+    
+    // Crear carpetas necesarias
+    fs::create_dir_all(".cursor/skills")?;
+    
+    println!("✅ Proyecto inicializado. Se ha creado 'skills.toml'.");
+    println!("🚀 Prueba ahora: npx skill-cli add <url> --skill <nombre>");
+    
+    Ok(())
+}
+
+// --- LÓGICA DE LIST ---
+fn list_skills() -> Result<()> {
+    let manifest_path = Path::new("skills.toml");
+    if !manifest_path.exists() {
+        println!("❌ No se encontró skills.toml. Ejecuta 'skill-cli init' primero.");
+        return Ok(());
+    }
+
+    let content = fs::read_to_string(manifest_path)?;
+    let manifest: SkillManifest = toml::from_str(&content)?;
+
+    if manifest.skills.is_empty() {
+        println!("📦 No hay skills instaladas.");
+        println!("💡 Usa 'skill-cli add <url> --skill <nombre>' para añadir una.");
+    } else {
+        println!("📦 Skills instaladas ({}):", manifest.skills.len());
+        for (name, entry) in &manifest.skills {
+            println!("  • {} ({})", name, entry.url);
+            println!("    └─ Branch: {} | Path: {}", entry.branch, entry.local_path);
+        }
+    }
+    
+    Ok(())
+}
+
+// --- HELPER: Cargar manifiesto ---
+fn load_manifest() -> Result<SkillManifest> {
+    let manifest_path = Path::new("skills.toml");
+    if !manifest_path.exists() {
+        anyhow::bail!("No se encontró skills.toml. Ejecuta 'skill-cli init' primero.");
+    }
+    
+    let content = fs::read_to_string(manifest_path)?;
+    let manifest: SkillManifest = toml::from_str(&content)?;
+    Ok(manifest)
+}
+
+// --- HELPER: Descargar archivo de skill ---
+fn download_skill_file(url: &str, branch: &str, name: &str) -> Result<()> {
+    // Implementación simplificada - aquí iría la lógica real de descarga
+    println!("   ⬇️ Descargando {} desde {} (branch: {})", name, url, branch);
+    // TODO: Implementar descarga real usando reqwest o similar
+    Ok(())
+}
+
+// --- FUNCIÓN PRINCIPAL ---
+fn main() -> Result<()> {
+    let cli = Cli::parse();
+
+    match &cli.command {
+        Commands::Init => init_project()?,
+        Commands::Add { url, skill } => {
+            println!("🔧 Añadiendo skill '{}' desde {}...", skill, url);
+            // Aquí iría la lógica de add_skill(url, skill)
+            println!("⚠️  Comando 'add' aún no implementado completamente.");
+        }
+        Commands::Update => update_skills()?,
+        Commands::Sync { editors } => sync_editors(editors.clone())?,
+        Commands::List => list_skills()?,
+    }
+
     Ok(())
 }

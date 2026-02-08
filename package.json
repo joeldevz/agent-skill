@@ -1,5 +1,5 @@
 {
-  "name": "agent-skill", 
+  "name": "skill-cli-tool", 
   "version": "0.0.1",
   "description": "Gestor de Skills para Agentes de IA",
   "bin": {
@@ -14,6 +14,9 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/TU_USUARIO/TU_REPO.git"
-  }
+    "url": "https://github.com/joeldevz/agent-skill.git"
+  },
+  "keywords": ["ai", "skills", "cli", "agents", "cursor", "antigravity"],
+  "author": "Your Name",
+  "license": "PROPRIETARY"
 }

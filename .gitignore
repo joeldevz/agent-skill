@@ -1,0 +1,36 @@
+# Rust
+target/
+Cargo.lock
+**/*.rs.bk
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Binarios descargados
+bin/skill-cli
+bin/skill-cli.exe
+bin/agent-skill
+bin/agent-skill.exe
+
+# Archivos de configuración generados
+.cursorrules
+.antigravity
+.github/copilot-instructions.md
+
+# Skills descargadas
+.cursor/skills/
+skills.toml
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
