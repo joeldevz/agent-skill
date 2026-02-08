@@ -13,8 +13,10 @@ if (!require('fs').existsSync(binPath)) {
 }
 
 // Ejecutar el binario y pasarle todos los argumentos
-const child = spawn(binPath, process.argv.slice(2), { stdio: 'inherit' });
-
+const child = spawn(binPath, process.argv.slice(2), { 
+    stdio: 'inherit',  
+    cwd: process.cwd()  
+});
 child.on('close', (code) => {
     process.exit(code);
 });
