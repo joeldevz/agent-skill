@@ -33,7 +33,7 @@ bin/skillctl.exe
 .cursorrules
 .antigravity
 .github/copilot-instructions.md
-
+.skillctl/
 # Skills descargadas
 .cursor/skills/
 skills.toml

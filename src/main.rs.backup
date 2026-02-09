@@ -1,0 +1,711 @@
+use clap::{Parser, Subcommand};
+use anyhow::{Context, Result};
+use std::fs;
+use std::path::{Path, PathBuf};
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use strum::IntoEnumIterator;
+use strum_macros::{EnumIter, Display};
+use cliclack::{intro, outro, log, spinner, confirm, outro_note};
+use console::style;
+use sha2::{Sha256, Digest};
+use chrono::Utc;
+use dialoguer::{FuzzySelect, theme::ColorfulTheme};
+
+// --- 1. CONFIGURACIÓN DE EDITORES (Portado de agents.ts) ---
+#[derive(Debug, Serialize, Deserialize, EnumIter, Display, Clone, PartialEq, Eq)]
+enum EditorType {
+    #[strum(serialize = "Cursor")]
+    Cursor,
+    #[strum(serialize = "Windsurf")]
+    Windsurf,
+    #[strum(serialize = "Antigravity")]
+    Antigravity,
+    #[strum(serialize = "VS Code")]
+    VSCode,
+    #[strum(serialize = "Claude Code")]
+    ClaudeCode,
+    #[strum(serialize = "Cline")]
+    Cline,
+    #[strum(serialize = "Roo Code")]
+    Roo,
+    #[strum(serialize = "OpenHands")]
+    OpenHands,
+    #[strum(serialize = "Trae")]
+    Trae,
+    #[strum(serialize = "GitHub Copilot")]
+    Copilot,
+    #[strum(serialize = "Continue")]
+    Continue,
+}
+
+impl EditorType {
+    // Portado de la propiedad `skillsDir` de agents.ts
+    fn skills_dir(&self) -> PathBuf {
+        match self {
+            EditorType::Cursor => PathBuf::from(".cursor/skills"),
+            EditorType::Windsurf => PathBuf::from(".windsurf/skills"),
+            EditorType::Antigravity => PathBuf::from(".agent/skills"), // Universal Agent dir
+            EditorType::ClaudeCode => PathBuf::from(".claude/skills"),
+            EditorType::Cline => PathBuf::from(".cline/skills"),
+            EditorType::Roo => PathBuf::from(".roo/skills"),
+            EditorType::OpenHands => PathBuf::from(".openhands/skills"),
+            EditorType::Trae => PathBuf::from(".trae/skills"),
+            EditorType::Copilot => PathBuf::from(".copilot/skills"),
+            EditorType::Continue => PathBuf::from(".continue/skills"),
+            EditorType::VSCode => PathBuf::from(".vscode/skills"),
+        }
+    }
+
+    // Archivo donde inyectamos la referencia ("Linker")
+    fn config_file(&self) -> PathBuf {
+        match self {
+            EditorType::Cursor => PathBuf::from(".cursorrules"),
+            EditorType::Windsurf => PathBuf::from(".windsurfrules"),
+            EditorType::Antigravity => PathBuf::from(".agent/rules/rules.md"), 
+            EditorType::ClaudeCode => PathBuf::from(".claude/config.md"), // Hipotético
+            EditorType::Cline => PathBuf::from(".clinerules"),
+            EditorType::Roo => PathBuf::from(".clinerules"), // Roo usa formato Cline a menudo
+            EditorType::OpenHands => PathBuf::from(".openhands/memory.md"),
+            EditorType::Trae => PathBuf::from(".trae/config.md"),
+            EditorType::Copilot => PathBuf::from(".github/copilot-instructions.md"),
+            EditorType::Continue => PathBuf::from(".continue/config.json"), // JSON injection is harder, skipping logic for brevity
+            EditorType::VSCode => PathBuf::from(".vscode/skills.md"),
+        }
+    }
+}
+
+// --- 2. ESTRUCTURAS DE DATOS ---
+
+#[derive(Serialize, Deserialize, Debug)]
+struct SkillConfig {
+    #[serde(default)]
+    active_editors: Vec<EditorType>,
+    #[serde(default = "default_store_path")]
+    store_path: String,
+    skills: HashMap<String, SkillEntry>,
+}
+
+fn default_store_path() -> String {
+    ".skillctl/store".to_string()
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct SkillEntry {
+    url: String,
+    #[serde(rename = "relative_path")] // Map JSON's relative_path to local_path
+    local_path: String,
+    hash: String,
+    last_updated: String,
+    #[serde(default)]
+    installed_in: Vec<EditorType>, 
+}
+
+#[derive(Deserialize, Debug)]
+struct RegistryItem {
+    name: String,
+    description: String,
+    url: String,
+    #[serde(default)]
+    skill_path: Option<String>,
+}
+
+// --- 3. CLI ARGUMENTS ---
+#[derive(Parser)]
+#[command(name = "skillctl", version = "0.0.8", about = "Secure AI Skill Manager")]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    Init,
+    /// Adds a skill from URL. Usage: add <url> --skill <name> [--path <relative_path>] [--list]
+    Add { 
+        url: String, 
+        #[arg(long)] skill: Option<String>,
+        #[arg(long)] path: Option<String>,
+        #[arg(long, short = 'l')] list: bool,
+    },
+    /// Remove installed skills
+    Remove {
+        #[arg(required = true)]
+        skills: Vec<String>,
+    },
+    /// Restore skills from skills.json
+    Install,
+    /// Search the community registry
+    Search,
+    /// List installed skills
+    List,
+}
+
+fn main() -> Result<()> {
+    let cli = Cli::parse();
+    
+    // Intro minimalista Astro-style
+    // Intro 'Astro-like' - Badge + Version + Friendly Face inside logic
+    let banner = format!(
+        "{} {} {}",
+        style(" skillctl ").on_cyan().black(),
+        style(format!("v{}", env!("CARGO_PKG_VERSION"))).cyan(),
+        style("Launch sequence initiated.").dim()
+    );
+    intro(banner)?;
+
+    // Optional: "Houston" style greeting
+    log::info(format!("{}  {}", style("◠ ◡ ◠").cyan(), "Time to build intelligent agents."))?;
+
+    match &cli.command {
+        Commands::Init => init_project()?,
+        Commands::Add { url, skill, path, list } => {
+            if *list {
+                list_available_skills(url, path.clone())?;
+            } else if let Some(skill_name) = skill {
+                add_skill_logic(url, skill_name, path.clone())?;
+            } else {
+                log::error("--skill <name> is required when not using --list")?;
+            }
+        },
+        Commands::Remove { skills } => remove_skills(skills)?,
+        Commands::Install => install_all()?,
+        Commands::Search => search_skills()?,
+        Commands::List => list_skills()?,
+    }
+
+    Ok(())
+}
+
+// --- HELPER: Auto-detect installed editors ---
+fn detect_installed_editors() -> Vec<EditorType> {
+    let mut detected = Vec::new();
+    
+    for editor in EditorType::iter() {
+        let config_dir = match editor {
+            EditorType::Cursor => Path::new(".cursor"),
+            EditorType::Windsurf => Path::new(".windsurf"),
+            EditorType::Antigravity => Path::new(".agent"),
+            EditorType::ClaudeCode => Path::new(".claude"),
+            EditorType::Cline => Path::new(".cline"),
+            EditorType::Roo => Path::new(".roo"),
+            EditorType::OpenHands => Path::new(".openhands"),
+            EditorType::Trae => Path::new(".trae"),
+            EditorType::Copilot => Path::new(".github"),
+            EditorType::Continue => Path::new(".continue"),
+            EditorType::VSCode => Path::new(".vscode"),
+        };
+        
+        if config_dir.exists() {
+            detected.push(editor);
+        }
+    }
+    
+    detected
+}
+
+// --- LÓGICA DE INIT ---
+fn init_project() -> Result<()> {
+    if Path::new("skills.json").exists() {
+        log::warning("skills.json already exists.")?;
+        let overwrite = confirm("Do you want to re-initialize? (This will overwrite skills.json)").interact()?;
+        if !overwrite {
+            outro("Skipping init.")?;
+            return Ok(());
+        }
+    }
+
+    log::info("Initializing secure skill environment.")?;
+
+    // Auto-detect installed editors
+    let detected_editors = detect_installed_editors();
+    
+    if !detected_editors.is_empty() {
+        log::info(format!("Detected {} editor(s): {:?}", 
+            detected_editors.len(), 
+            detected_editors.iter().map(|e| e.to_string()).collect::<Vec<_>>()
+        ))?;
+        
+        let use_detected = confirm("Use detected editors?").interact()?;
+        if use_detected {
+            let config = SkillConfig {
+                active_editors: detected_editors.clone(),
+                store_path: default_store_path(),
+                skills: HashMap::new(),
+            };
+
+            let spin = spinner();
+            spin.start("Scaffolding directories...");
+            
+            save_config(&config)?;
+            fs::create_dir_all(&config.store_path)?;
+
+            for editor in &detected_editors {
+                let rules_file = editor.config_file();
+                if let Some(parent) = rules_file.parent() { fs::create_dir_all(parent)?; }
+                
+                if !rules_file.exists() {
+                    fs::write(&rules_file, format!("# AI Rules for {}\n", editor))?;
+                }
+                
+                fs::create_dir_all(editor.skills_dir())?;
+            }
+
+            spin.stop("Environment ready.");
+            
+            outro_note(
+                style("Setup Complete").cyan(),
+                format!("Configured for {:?}. Try: npx skillctl search", detected_editors)
+            )?;
+            return Ok(());
+        }
+    }
+
+    // Manual selection if no detection or user declined
+    let editors: Vec<EditorType> = EditorType::iter().collect();
+    let items: Vec<(EditorType, String, String)> = editors.iter()
+        .map(|e| (e.clone(), e.to_string(), format!("Uses {}", e.skills_dir().display())))
+        .collect();
+
+    let selected_editors: Vec<EditorType> = cliclack::multiselect("Which AI Editors are you using?")
+        .items(&items)
+        .interact()?;
+
+    if selected_editors.is_empty() {
+        outro("No editors selected. Exiting.")?;
+        return Ok(());
+    }
+
+    let config = SkillConfig {
+        active_editors: selected_editors.clone(),
+        store_path: default_store_path(),
+        skills: HashMap::new(),
+    };
+
+    let spin = spinner();
+    spin.start("Scaffolding directories...");
+    
+    save_config(&config)?;
+    fs::create_dir_all(&config.store_path)?;
+
+    for editor in &selected_editors {
+        let rules_file = editor.config_file();
+        if let Some(parent) = rules_file.parent() { fs::create_dir_all(parent)?; }
+        
+        if !rules_file.exists() {
+            fs::write(&rules_file, format!("# AI Rules for {}\n", editor))?;
+        }
+        
+        fs::create_dir_all(editor.skills_dir())?;
+    }
+
+    spin.stop("Environment ready.");
+    
+    outro_note(
+        style("Setup Complete").cyan(),
+        format!("Configured for {:?}. Try: npx skillctl search", selected_editors)
+    )?;
+    Ok(())
+}
+
+// --- LÓGICA CORE: ADD & INTEGRITY CHECK ---
+fn add_skill_logic(repo_url: &str, skill_name: &str, custom_path: Option<String>) -> Result<()> {
+    let mut config = load_config().context("Please run 'init' first.")?;
+    
+    let spin = spinner();
+    spin.start(format!("Fetching {}...", skill_name));
+
+    // 1. Transformar URL a Raw (GitHub support)
+    let raw_base = repo_url.replace("github.com", "raw.githubusercontent.com").trim_end_matches('/').to_string();
+    
+    // 2. Determine paths to try (in order of priority)
+    let paths_to_try: Vec<String> = if let Some(custom) = custom_path {
+        // If custom path provided, only try that
+        vec![custom]
+    } else {
+        // Try common skill locations in order
+        vec![
+            // Standard structure (vercel-labs/skills)
+            format!("skills/{}/SKILL.md", skill_name),
+            // Plugin structures (wshobson/agents and similar)
+            format!("plugins/javascript-typescript/skills/{}/SKILL.md", skill_name),
+            format!("plugins/typescript/skills/{}/SKILL.md", skill_name),
+            format!("plugins/javascript/skills/{}/SKILL.md", skill_name),
+            // Other common patterns
+            format!(".agent/skills/{}/SKILL.md", skill_name),
+            format!(".cursor/skills/{}/SKILL.md", skill_name),
+            format!(".windsurf/skills/{}/SKILL.md", skill_name),
+        ]
+    };
+
+    // 3. Try each path until one works
+    let mut content = String::new();
+    let mut _successful_path = String::new();
+    let mut last_error = String::new();
+
+    for path_in_repo in paths_to_try {
+        let target_url = format!("{}/main/{}", raw_base, path_in_repo);
+        
+        match reqwest::blocking::get(&target_url) {
+            Ok(resp) if resp.status().is_success() => {
+                content = resp.text()?;
+                _successful_path = path_in_repo;
+                break;
+            }
+            Ok(resp) => {
+                last_error = format!("{} ({})", target_url, resp.status());
+            }
+            Err(e) => {
+                last_error = format!("{} ({})", target_url, e);
+            }
+        }
+    }
+
+    if content.is_empty() {
+        spin.stop("Failed");
+        log::error(format!("Could not find skill '{}' in repository", skill_name))?;
+        log::error(format!("Last attempted: {}", last_error))?;
+        outro("Try using --path to specify the exact location")?;
+        return Ok(());
+    }
+
+    // 3. CALCULAR HASH (Integrity)
+    let new_hash = calculate_hash(&content);
+    spin.stop("Downloaded.");
+
+    // 4. Verificar contra lo instalado
+    if let Some(existing_entry) = config.skills.get(skill_name) {
+        if existing_entry.hash != new_hash {
+            log::warning("⚠️  Integrity Check: Content differs from installed version.")?;
+            let should_update = confirm("Do you want to overwrite local skill with remote version?").interact()?;
+            if !should_update {
+                outro("Update cancelled.")?;
+                return Ok(());
+            }
+        } else {
+            log::info("Skill is up to date (Hash match).")?;
+        }
+    }
+
+    // 5. Guardar archivo en Central Store
+    let spin_write = spinner();
+    spin_write.start("Installing securely to store...");
+    
+    let filename = "SKILL.md";
+    let store_dir = Path::new(&config.store_path).join(skill_name);
+    let local_path = store_dir.join(filename);
+    
+    fs::create_dir_all(&store_dir)?;
+    fs::write(&local_path, &content)?;
+
+    // 6. Actualizar Configuración
+    config.skills.insert(skill_name.to_string(), SkillEntry {
+        url: repo_url.to_string(),
+        local_path: local_path.to_string_lossy().to_string(),
+        hash: new_hash,
+        last_updated: Utc::now().to_rfc3339(),
+        installed_in: config.active_editors.clone(),
+    });
+    save_config(&config)?;
+
+    // 7. Linkear para CADA editor activo
+    for editor in &config.active_editors {
+        inject_reference(editor, skill_name, &local_path)?;
+    }
+
+    spin_write.stop("Installed.");
+    outro(format!("{} is now active for {:?}", style(skill_name).green(), config.active_editors))?;
+
+    Ok(())
+}
+
+// --- LÓGICA SEARCH ---
+fn search_skills() -> Result<()> {
+    let spin = spinner();
+    spin.start("Fetching registry...");
+    
+    // CAMBIA ESTO POR TU URL REAL DE GITHUB RAW
+    let registry_url = "https://raw.githubusercontent.com/joeldevz/agent-skills/main/registry.json"; 
+    
+    let resp = reqwest::blocking::get(registry_url);
+    spin.stop("Registry loaded.");
+
+    let items: Vec<RegistryItem> = match resp {
+        Ok(r) => r.json().unwrap_or_default(),
+        Err(_) => {
+            log::error("Could not reach registry. Check your internet.")?;
+            return Ok(());
+        }
+    };
+
+    if items.is_empty() {
+        log::warning("Registry is empty.")?;
+        return Ok(());
+    }
+
+    // Fuzzy Search con Dialoguer (Mejor experiencia que cliclack para esto)
+    let options: Vec<String> = items.iter()
+        .map(|i| format!("{} - {}", style(&i.name).bold().cyan(), i.description))
+        .collect();
+
+    let selection = FuzzySelect::with_theme(&ColorfulTheme::default())
+        .with_prompt("Search skills:")
+        .default(0)
+        .items(&options)
+        .interact_opt()?;
+
+    if let Some(index) = selection {
+        let chosen = &items[index];
+        let skill_id = chosen.skill_path.as_deref().unwrap_or(&chosen.name);
+        
+        // Llamada recursiva a la lógica de add
+        add_skill_logic(&chosen.url, skill_id, None)?;
+    } else {
+        outro("Cancelled.")?;
+    }
+    Ok(())
+}
+
+// --- COMANDO LIST ---
+fn list_skills() -> Result<()> {
+    let config = load_config().context("Configuration not found. Please run 'skillctl init' first.")?;
+    
+    if config.skills.is_empty() {
+        log::warning("No skills installed.")?;
+        outro_note(style("Hint").cyan(), "Try running 'skillctl search' to find skills.")?;
+        return Ok(());
+    }
+
+    log::info(format!("{} installed skills:", style(config.skills.len()).cyan()))?;
+
+    for (name, entry) in config.skills {
+        let date = chrono::DateTime::parse_from_rfc3339(&entry.last_updated)
+            .map(|dt| dt.format("%Y-%m-%d").to_string())
+            .unwrap_or_else(|_| "??".to_string());
+            
+        println!("   {} {}  {}", 
+            style("●").green(), 
+            style(&name).bold(), 
+            style(format!("[{}]", date)).dim()
+        );
+    }
+    println!();
+    Ok(())
+}
+
+// --- COMANDO LIST AVAILABLE ---
+fn list_available_skills(_repo_url: &str, _custom_path: Option<String>) -> Result<()> {
+    let spin = spinner();
+    spin.start("Discovering available skills...");
+
+    spin.stop("Discovery complete.");
+    
+    log::warning("Skill discovery from remote repos is limited without cloning.")?;
+    log::info("Try installing a specific skill with: skillctl add <url> --skill <name>")?;
+    outro("For full discovery, the repository would need to be cloned locally")?;
+    
+    Ok(())
+}
+
+// --- COMANDO REMOVE ---
+fn remove_skills(skill_names: &[String]) -> Result<()> {
+    let mut config = load_config().context("Configuration not found. Please run 'skillctl init' first.")?;
+    
+    if config.skills.is_empty() {
+        log::warning("No skills installed.")?;
+        return Ok(());
+    }
+
+    log::info(format!("Removing {} skill(s)...", skill_names.len()))?;
+    
+    let mut removed_count = 0;
+    let mut not_found = Vec::new();
+
+    for skill_name in skill_names {
+        if let Some(entry) = config.skills.remove(skill_name) {
+            // Remove from filesystem
+            let skill_path = Path::new(&entry.local_path);
+            if let Some(parent) = skill_path.parent() {
+                if parent.exists() {
+                    fs::remove_dir_all(parent).ok(); // Ignore errors
+                }
+            }
+
+            // Remove references from all active editors
+            for editor in &config.active_editors {
+                remove_reference(editor, skill_name)?;
+            }
+
+            removed_count += 1;
+            log::info(format!("✓ Removed {}", style(skill_name).green()))?;
+        } else {
+            not_found.push(skill_name.clone());
+        }
+    }
+
+    // Save updated config
+    save_config(&config)?;
+
+    if removed_count > 0 {
+        outro(format!("Removed {} skill(s)", removed_count))?;
+    }
+    
+    if !not_found.is_empty() {
+        log::warning(format!("Skills not found: {}", not_found.join(", ")))?;
+    }
+
+    Ok(())
+}
+
+// --- COMANDO INSTALL (RESTORE) ---
+// --- COMANDO INSTALL (RESTORE) ---
+// --- COMANDO INSTALL (RESTORE) ---
+fn install_all() -> Result<()> {
+    let config = load_config().context("Configuration not found. Please run 'skillctl init' first.")?;
+    log::info(format!("Verifying {} skills...", config.skills.len()))?;
+
+    for (name, entry) in config.skills {
+        let local_path = Path::new(&entry.local_path);
+
+        // Si el archivo no existe, intentamos descargarlo de nuevo (Restore)
+        if !local_path.exists() {
+            let spin = spinner();
+            spin.start(format!("Restoring {}...", name));
+
+            // Reconstruir URL (Lógica simplificada de GitHub Raw)
+            let raw_base = entry.url.replace("github.com", "raw.githubusercontent.com").trim_end_matches('/').to_string();
+            let target_url = format!("{}/main/skills/{}/SKILL.md", raw_base, name);
+
+            match reqwest::blocking::get(&target_url) {
+                Ok(resp) if resp.status().is_success() => {
+                     let content = resp.text()?;
+                     // Verificación de integridad básica
+                     let current_hash = calculate_hash(&content);
+                     if current_hash != entry.hash {
+                         log::warning(format!("⚠️ Hash mismatch for {}. Content changed upstream.", name))?;
+                     }
+
+                     if let Some(parent) = local_path.parent() {
+                         fs::create_dir_all(parent)?;
+                     }
+                     fs::write(local_path, content)?;
+                     spin.stop("Restored.");
+                },
+                _ => {
+                    spin.stop("Failed.");
+                    log::error(format!("Could not restore {} from {}", name, target_url))?;
+                }
+            }
+        }
+
+        // Always check references for all active editors
+        for editor in &config.active_editors {
+            inject_reference(editor, &name, local_path)?;
+        }
+    }
+    outro("All skills verified and linked.")?;
+    Ok(())
+}
+
+// --- HELPERS ---
+
+fn calculate_hash(content: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(content);
+    hex::encode(hasher.finalize())
+}
+
+fn inject_reference(editor: &EditorType, skill_name: &str, skill_path: &Path) -> Result<()> {
+    let relative_path = skill_path.to_string_lossy();
+    
+    // CASO ESPECIAL: Cursor usa ahora .cursor/rules/*.mdc
+    if let EditorType::Cursor = editor {
+        let rules_dir = Path::new(".cursor/rules");
+        fs::create_dir_all(rules_dir)?;
+
+        let rule_file = rules_dir.join(format!("{}.mdc", skill_name));
+        let content = format!(
+            "---\ndescription: Skill {}\nglobs: *\n---\n# {}\n\nRead logic from: {}\n",
+            skill_name,
+            skill_name,
+            relative_path
+        );
+        fs::write(&rule_file, content)?;
+        return Ok(());
+    }
+
+    let config_file = editor.config_file();
+    let current_content = if config_file.exists() { fs::read_to_string(&config_file)? } else { String::new() };
+    
+    // Lógica específica por editor para inyección en archivo único
+    let injection = match editor {
+        EditorType::Antigravity => format!("\n### Skill: {}\nRefer to logic in: `{}`\n", skill_name, relative_path),
+        EditorType::Cline | EditorType::Roo => format!("\nRunning context for {}: See {}\n", skill_name, relative_path),
+        _ => format!("\n- Skill ({}) -> Read file: {}\n", skill_name, relative_path),
+    };
+
+    if !current_content.contains(&format!("Skill: {}", skill_name)) && !current_content.contains(&format!("Skill ({})", skill_name)) {
+        if let Some(parent) = config_file.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let mut file = fs::OpenOptions::new().append(true).create(true).open(&config_file)?;
+        use std::io::Write;
+        write!(file, "{}", injection)?;
+    }
+    Ok(())
+}
+
+fn remove_reference(editor: &EditorType, skill_name: &str) -> Result<()> {
+    // CASO ESPECIAL: Cursor usa .cursor/rules/*.mdc
+    if let EditorType::Cursor = editor {
+        let rule_file = Path::new(".cursor/rules").join(format!("{}.mdc", skill_name));
+        if rule_file.exists() {
+            fs::remove_file(rule_file)?;
+        }
+        return Ok(());
+    }
+
+    let config_file = editor.config_file();
+    if !config_file.exists() {
+        return Ok(());
+    }
+
+    let content = fs::read_to_string(&config_file)?;
+    
+    // Remove lines that reference this skill
+    let lines: Vec<&str> = content.lines().collect();
+    let mut new_lines = Vec::new();
+    let mut skip_next = false;
+
+    for line in lines {
+        // Skip lines that mention the skill
+        if line.contains(&format!("Skill: {}", skill_name)) 
+            || line.contains(&format!("Skill ({})", skill_name))
+            || line.contains(&format!("context for {}", skill_name)) {
+            skip_next = true;
+            continue;
+        }
+        
+        // Skip the next line if it was a reference path
+        if skip_next && (line.contains("Read file:") || line.contains("Refer to logic") || line.contains("See ")) {
+            skip_next = false;
+            continue;
+        }
+        
+        skip_next = false;
+        new_lines.push(line);
+    }
+
+    fs::write(&config_file, new_lines.join("\n"))?;
+    Ok(())
+}
+
+fn load_config() -> Result<SkillConfig> {
+    let content = fs::read_to_string("skills.json")?;
+    Ok(serde_json::from_str(&content)?)
+}
+
+fn save_config(config: &SkillConfig) -> Result<()> {
+    fs::write("skills.json", serde_json::to_string_pretty(config)?)?;
+    Ok(())
+}
