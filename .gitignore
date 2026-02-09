@@ -3,6 +3,18 @@ target/
 Cargo.lock
 **/*.rs.bk
 
+skills.json
+.agent/
+.cursor/
+.windsurf/
+.claude/
+.cline/
+.roo/
+.openhands/
+.trae/
+.copilot/
+.vscode/
+
 # Node
 node_modules/
 npm-debug.log*
@@ -14,6 +26,8 @@ bin/skill-cli
 bin/skill-cli.exe
 bin/agent-skill
 bin/agent-skill.exe
+bin/skillctl
+bin/skillctl.exe
 
 # Archivos de configuración generados
 .cursorrules
@@ -23,6 +37,7 @@ bin/agent-skill.exe
 # Skills descargadas
 .cursor/skills/
 skills.toml
+skills.json
 
 # IDEs
 .vscode/

@@ -1,10 +1,16 @@
 {
   "name": "skillctl", 
-  "version": "0.0.6",
+  "version": "0.0.7",
   "description": "Gestor de Skills para Agentes de IA",
   "bin": {
     "skillctl": "bin/run.js"
   },
+  "files": [
+    "bin",
+    "scripts",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "postinstall": "node scripts/install.js"
   },

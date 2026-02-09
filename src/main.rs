@@ -1,39 +1,108 @@
 use clap::{Parser, Subcommand};
-use colored::*;
 use anyhow::{Context, Result};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
-use dialoguer::{Select, theme::ColorfulTheme};
 use std::collections::HashMap;
+use strum::IntoEnumIterator;
+use strum_macros::{EnumIter, Display};
+use cliclack::{intro, outro, log, spinner, select, confirm, outro_note};
+use console::style;
+use sha2::{Sha256, Digest};
+use chrono::Utc;
+use dialoguer::{FuzzySelect, theme::ColorfulTheme};
 
-// --- MODELO DE DATOS (JSON) ---
-#[derive(Serialize, Deserialize, Debug)]
-struct SkillConfig {
-    editor: String, // "cursor", "antigravity", "vscode"
-    skills: HashMap<String, SkillEntry>,
+// --- 1. CONFIGURACIÓN DE EDITORES (Portado de agents.ts) ---
+#[derive(Debug, Serialize, Deserialize, EnumIter, Display, Clone, PartialEq, Eq)]
+enum EditorType {
+    #[strum(serialize = "Cursor")]
+    Cursor,
+    #[strum(serialize = "Windsurf")]
+    Windsurf,
+    #[strum(serialize = "Antigravity")]
+    Antigravity,
+    #[strum(serialize = "VS Code")]
+    VSCode,
+    #[strum(serialize = "Claude Code")]
+    ClaudeCode,
+    #[strum(serialize = "Cline")]
+    Cline,
+    #[strum(serialize = "Roo Code")]
+    Roo,
+    #[strum(serialize = "OpenHands")]
+    OpenHands,
+    #[strum(serialize = "Trae")]
+    Trae,
+    #[strum(serialize = "GitHub Copilot")]
+    Copilot,
+    #[strum(serialize = "Continue")]
+    Continue,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-struct SkillEntry {
-    url: String,
-    local_path: String,
-}
+impl EditorType {
+    // Portado de la propiedad `skillsDir` de agents.ts
+    fn skills_dir(&self) -> PathBuf {
+        match self {
+            EditorType::Cursor => PathBuf::from(".cursor/skills"),
+            EditorType::Windsurf => PathBuf::from(".windsurf/skills"),
+            EditorType::Antigravity => PathBuf::from(".agent/skills"), // Universal Agent dir
+            EditorType::ClaudeCode => PathBuf::from(".claude/skills"),
+            EditorType::Cline => PathBuf::from(".cline/skills"),
+            EditorType::Roo => PathBuf::from(".roo/skills"),
+            EditorType::OpenHands => PathBuf::from(".openhands/skills"),
+            EditorType::Trae => PathBuf::from(".trae/skills"),
+            EditorType::Copilot => PathBuf::from(".copilot/skills"),
+            EditorType::Continue => PathBuf::from(".continue/skills"),
+            EditorType::VSCode => PathBuf::from(".vscode/skills"),
+        }
+    }
 
-impl Default for SkillConfig {
-    fn default() -> Self {
-        Self {
-            editor: "cursor".to_string(),
-            skills: HashMap::new(),
+    // Archivo donde inyectamos la referencia ("Linker")
+    fn config_file(&self) -> PathBuf {
+        match self {
+            EditorType::Cursor => PathBuf::from(".cursorrules"),
+            EditorType::Windsurf => PathBuf::from(".windsurfrules"),
+            EditorType::Antigravity => PathBuf::from(".agent/rules/rules.md"), 
+            EditorType::ClaudeCode => PathBuf::from(".claude/config.md"), // Hipotético
+            EditorType::Cline => PathBuf::from(".clinerules"),
+            EditorType::Roo => PathBuf::from(".clinerules"), // Roo usa formato Cline a menudo
+            EditorType::OpenHands => PathBuf::from(".openhands/memory.md"),
+            EditorType::Trae => PathBuf::from(".trae/config.md"),
+            EditorType::Copilot => PathBuf::from(".github/copilot-instructions.md"),
+            EditorType::Continue => PathBuf::from(".continue/config.json"), // JSON injection is harder, skipping logic for brevity
+            EditorType::VSCode => PathBuf::from(".vscode/skills.md"),
         }
     }
 }
 
-// --- CLI ARGUMENTS ---
+// --- 2. ESTRUCTURAS DE DATOS ---
+
+#[derive(Serialize, Deserialize, Debug)]
+struct SkillConfig {
+    editor: EditorType,
+    skills: HashMap<String, SkillEntry>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct SkillEntry {
+    url: String,
+    local_path: String,
+    hash: String,           // <--- INTEGRIDAD: SHA256 del contenido
+    last_updated: String,   // <--- TIMESTAMP
+}
+
+#[derive(Deserialize, Debug)]
+struct RegistryItem {
+    name: String,
+    description: String,
+    url: String,
+    #[serde(default)]
+    skill_path: Option<String>,
+}
+
+// --- 3. CLI ARGUMENTS ---
 #[derive(Parser)]
-#[command(name = "skillctl")]
-#[command(version = "1.0.0")]
-#[command(about = "Gestor de Skills tipo Vercel", long_about = None)]
+#[command(name = "skillctl", version = "0.0.7", about = "Secure AI Skill Manager")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -41,187 +110,316 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Inicializa el proyecto y elige editor
     Init,
-    /// Añade una skill. Uso: skillctl add <URL> --skill <NOMBRE>
-    Add {
-        url: String,
-        /// Nombre de la skill a extraer
-        #[arg(long)] // Esto hace que sea --skill <nombre>
-        skill: String,
-    },
-    /// Instala todas las skills definidas en skills.json
+    /// Adds a skill from URL. Usage: add <url> --skill <name>
+    Add { url: String, #[arg(long)] skill: String },
+    /// Restore skills from skills.json
     Install,
+    /// Search the community registry
+    /// Search the community registry
+    Search,
+    /// List installed skills
+    List,
 }
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
+    
+    // Intro minimalista Astro-style
+    // Intro 'Astro-like' - Badge + Version + Friendly Face inside logic
+    let banner = format!(
+        "{} {} {}",
+        style(" skillctl ").on_cyan().black(),
+        style(format!("v{}", env!("CARGO_PKG_VERSION"))).cyan(),
+        style("Launch sequence initiated.").dim()
+    );
+    intro(banner)?;
+
+    // Optional: "Houston" style greeting
+    log::info(format!("{}  {}", style("◠ ◡ ◠").cyan(), "Time to build intelligent agents."))?;
 
     match &cli.command {
         Commands::Init => init_project()?,
-        Commands::Add { url, skill } => add_skill(url, skill)?,
+        Commands::Add { url, skill } => add_skill_logic(url, skill)?,
         Commands::Install => install_all()?,
+        Commands::Search => search_skills()?,
+        Commands::List => list_skills()?,
     }
+
     Ok(())
 }
 
-// --- COMANDO: INIT (Interactivo) ---
+// --- LÓGICA DE INIT ---
 fn init_project() -> Result<()> {
-    let config_path = Path::new("skills.json");
-    if config_path.exists() {
-        println!("⚠️  Ya existe 'skills.json'.");
+    if Path::new("skills.json").exists() {
+        log::warning("skills.json already exists.")?;
+        outro("Skipping init.")?;
         return Ok(());
     }
 
-    println!("{}", "🚀 Inicializando Skill Controller...".bold().cyan());
+    log::info("Initializing secure skill environment.")?;
 
-    // Menú interactivo
-    let editors = vec!["Cursor (.cursor/skills)", "Antigravity (.antigravity)", "VSCode (.vscode)"];
-    let selection = Select::with_theme(&ColorfulTheme::default())
-        .with_prompt("¿Qué editor vas a usar?")
-        .default(0)
-        .items(&editors)
-        .interact()
-        .unwrap();
+    let editors: Vec<EditorType> = EditorType::iter().collect();
+    // Creamos un vector de tuplas para el selector (Valor, Label, Descripcion)
+    let items: Vec<(EditorType, String, String)> = editors.iter()
+        .map(|e| (e.clone(), e.to_string(), format!("Uses {}", e.skills_dir().display())))
+        .collect();
 
-    let editor_key = match selection {
-        0 => "cursor",
-        1 => "antigravity",
-        _ => "vscode",
-    };
+    let selected_editor = select("Which AI Editor are you using?")
+        .items(&items)
+        .interact()?;
 
     let config = SkillConfig {
-        editor: editor_key.to_string(),
+        editor: selected_editor.clone(),
         skills: HashMap::new(),
     };
 
-    save_config(&config)?;
+    let spin = spinner();
+    spin.start("Scaffolding directories...");
     
-    // Crear carpeta base según editor
-    let base_dir = get_skills_dir(editor_key);
-    fs::create_dir_all(&base_dir)?;
+    save_config(&config)?;
+    fs::create_dir_all(selected_editor.skills_dir())?;
+    
+    let rules_file = selected_editor.config_file();
+    if let Some(parent) = rules_file.parent() { fs::create_dir_all(parent)?; }
+    if !rules_file.exists() {
+        fs::write(&rules_file, format!("# AI Rules for {}\n", selected_editor))?;
+    }
 
-    println!("✅ Configuración guardada en 'skills.json'. Editor: {}", editor_key.green());
+    spin.stop("Environment ready.");
+    
+    outro_note(
+        style("Setup Complete").cyan(),
+        format!("Configured for {}. Try: npx skillctl search", selected_editor)
+    )?;
     Ok(())
 }
 
-// --- COMANDO: ADD ---
-fn add_skill(repo_url: &str, skill_name: &str) -> Result<()> {
-    // 1. Cargar config para saber dónde guardar
-    let mut config = load_config()?;
-    let skills_dir = get_skills_dir(&config.editor);
-
-    println!("{} {}...", "📦 Añadiendo skill:".blue(), skill_name);
-
-    // 2. Lógica de descarga (GitHub Raw)
-    let raw_base = repo_url
-        .replace("github.com", "raw.githubusercontent.com")
-        .trim_end_matches('/')
-        .to_string();
+// --- LÓGICA CORE: ADD & INTEGRITY CHECK ---
+fn add_skill_logic(repo_url: &str, skill_name: &str) -> Result<()> {
+    let mut config = load_config().context("Please run 'init' first.")?;
     
-    // URL: .../main/skills/{nombre}/SKILL.md (Ajustar según estructura real del repo)
-    let target_url = format!("{}/main/skills/{}/SKILL.md", raw_base, skill_name);
+    let spin = spinner();
+    spin.start(format!("Fetching {}...", skill_name));
+
+    // 1. Transformar URL a Raw (GitHub support)
+    let raw_base = repo_url.replace("github.com", "raw.githubusercontent.com").trim_end_matches('/').to_string();
+    let target_url = format!("{}/main/skills/{}/SKILL.md", raw_base, skill_name); // Ajustar según estructura real
+
+    // 2. Descargar contenido en memoria
+    let resp = reqwest::blocking::get(&target_url)?;
+    if !resp.status().is_success() {
+        spin.stop("Failed");
+        log::error(format!("404 Not Found: {}", target_url))?;
+        return Ok(());
+    }
+    let content = resp.text()?;
+
+    // 3. CALCULAR HASH (Integrity)
+    let new_hash = calculate_hash(&content);
+    spin.stop("Downloaded.");
+
+    // 4. Verificar contra lo instalado
+    if let Some(existing_entry) = config.skills.get(skill_name) {
+        if existing_entry.hash != new_hash {
+            log::warning("⚠️  Integrity Check: Content differs from installed version.")?;
+            let should_update = confirm("Do you want to overwrite local skill with remote version?").interact()?;
+            if !should_update {
+                outro("Update cancelled.")?;
+                return Ok(());
+            }
+        } else {
+            log::info("Skill is up to date (Hash match).")?;
+            // Opcional: Salir si es igual, o forzar reescritura
+        }
+    }
+
+    // 5. Guardar archivo
+    let spin_write = spinner();
+    spin_write.start("Installing securely...");
     
-    // 3. Descargar
-    let content = download_file(&target_url)?;
+    let filename = "SKILL.md";
+    let local_path = config.editor.skills_dir().join(skill_name).join(filename);
+    fs::create_dir_all(local_path.parent().unwrap())?;
+    fs::write(&local_path, &content)?;
 
-    // 4. Guardar archivo
-    let skill_folder = skills_dir.join(skill_name);
-    fs::create_dir_all(&skill_folder)?;
-    let file_path = skill_folder.join("SKILL.md");
-    fs::write(&file_path, &content)?;
-
-    println!("✅ Skill guardada en: {:?}", file_path);
-
-    // 5. Actualizar JSON
+    // 6. Actualizar Configuración
     config.skills.insert(skill_name.to_string(), SkillEntry {
         url: repo_url.to_string(),
-        local_path: file_path.to_string_lossy().to_string(),
+        local_path: local_path.to_string_lossy().to_string(),
+        hash: new_hash,
+        last_updated: Utc::now().to_rfc3339(),
     });
     save_config(&config)?;
 
-    // 6. Actualizar configuración del editor (Integración)
-    update_editor_config(&config.editor, skill_name, &file_path)?;
+    // 7. Linkear
+    inject_reference(&config.editor, skill_name, &local_path)?;
+
+    spin_write.stop("Installed.");
+    outro(format!("{} is now active.", style(skill_name).green()))?;
 
     Ok(())
 }
 
-// --- COMANDO: INSTALL ---
-fn install_all() -> Result<()> {
-    let config = load_config().context("No se encontró skills.json. Ejecuta 'init' primero.")?;
+// --- LÓGICA SEARCH ---
+fn search_skills() -> Result<()> {
+    let spin = spinner();
+    spin.start("Fetching registry...");
     
-    println!("🔄 Restaurando {} skills para {}...", config.skills.len(), config.editor);
+    // CAMBIA ESTO POR TU URL REAL DE GITHUB RAW
+    let registry_url = "https://raw.githubusercontent.com/joeldevz/agent-skills/main/registry.json"; 
+    
+    let resp = reqwest::blocking::get(registry_url);
+    spin.stop("Registry loaded.");
 
-    for (name, entry) in &config.skills {
-        // Re-usamos la lógica de add pero sin duplicar entradas en el json
-        // (Aquí simplificado: solo descargamos el archivo de nuevo)
-        
-        let raw_base = entry.url
-            .replace("github.com", "raw.githubusercontent.com")
-            .trim_end_matches('/')
-            .to_string();
-        let target_url = format!("{}/main/skills/{}/SKILL.md", raw_base, name);
-
-        match download_file(&target_url) {
-            Ok(content) => {
-                let path = Path::new(&entry.local_path);
-                if let Some(parent) = path.parent() {
-                    fs::create_dir_all(parent)?;
-                }
-                fs::write(path, content)?;
-                println!(" - ✅ {}", name);
-            },
-            Err(_) => println!(" - ❌ Error descargando {}", name),
+    let items: Vec<RegistryItem> = match resp {
+        Ok(r) => r.json().unwrap_or_default(),
+        Err(_) => {
+            log::error("Could not reach registry. Check your internet.")?;
+            return Ok(());
         }
+    };
+
+    if items.is_empty() {
+        log::warning("Registry is empty.")?;
+        return Ok(());
     }
-    println!("✨ Instalación completada.");
+
+    // Fuzzy Search con Dialoguer (Mejor experiencia que cliclack para esto)
+    let options: Vec<String> = items.iter()
+        .map(|i| format!("{} - {}", style(&i.name).bold().cyan(), i.description))
+        .collect();
+
+    let selection = FuzzySelect::with_theme(&ColorfulTheme::default())
+        .with_prompt("Search skills:")
+        .default(0)
+        .items(&options)
+        .interact_opt()?;
+
+    if let Some(index) = selection {
+        let chosen = &items[index];
+        let skill_id = chosen.skill_path.as_deref().unwrap_or(&chosen.name);
+        
+        // Llamada recursiva a la lógica de add
+        add_skill_logic(&chosen.url, skill_id)?;
+    } else {
+        outro("Cancelled.")?;
+    }
+    Ok(())
+}
+
+// --- COMANDO LIST ---
+fn list_skills() -> Result<()> {
+    let config = load_config().context("Configuration not found. Please run 'skillctl init' first.")?;
+    
+    if config.skills.is_empty() {
+        log::warning("No skills installed.")?;
+        outro_note(style("Hint").cyan(), "Try running 'skillctl search' to find skills.")?;
+        return Ok(());
+    }
+
+    log::info(format!("{} installed skills:", style(config.skills.len()).cyan()))?;
+
+    for (name, entry) in config.skills {
+        let date = chrono::DateTime::parse_from_rfc3339(&entry.last_updated)
+            .map(|dt| dt.format("%Y-%m-%d").to_string())
+            .unwrap_or_else(|_| "??".to_string());
+            
+        println!("   {} {}  {}", 
+            style("●").green(), 
+            style(&name).bold(), 
+            style(format!("[{}]", date)).dim()
+        );
+    }
+    println!();
+    Ok(())
+}
+
+// --- COMANDO INSTALL (RESTORE) ---
+// --- COMANDO INSTALL (RESTORE) ---
+fn install_all() -> Result<()> {
+    let config = load_config().context("Configuration not found. Please run 'skillctl init' first.")?;
+    log::info(format!("Verifying {} skills...", config.skills.len()))?;
+
+    for (name, entry) in config.skills {
+        let local_path = Path::new(&entry.local_path);
+
+        // Si el archivo no existe, intentamos descargarlo de nuevo (Restore)
+        if !local_path.exists() {
+            let spin = spinner();
+            spin.start(format!("Restoring {}...", name));
+
+            // Reconstruir URL (Lógica simplificada de GitHub Raw)
+            let raw_base = entry.url.replace("github.com", "raw.githubusercontent.com").trim_end_matches('/').to_string();
+            let target_url = format!("{}/main/skills/{}/SKILL.md", raw_base, name);
+
+            match reqwest::blocking::get(&target_url) {
+                Ok(resp) if resp.status().is_success() => {
+                     let content = resp.text()?;
+                     // Verificación de integridad básica
+                     let current_hash = calculate_hash(&content);
+                     if current_hash != entry.hash {
+                         log::warning(format!("⚠️ Hash mismatch for {}. Content changed upstream.", name))?;
+                     }
+
+                     if let Some(parent) = local_path.parent() {
+                         fs::create_dir_all(parent)?;
+                     }
+                     fs::write(local_path, content)?;
+                     spin.stop("Restored.");
+                },
+                _ => {
+                    spin.stop("Failed.");
+                    log::error(format!("Could not restore {} from {}", name, target_url))?;
+                }
+            }
+        }
+
+        // Siempre aseguramos el link
+        inject_reference(&config.editor, &name, local_path)?;
+    }
+    outro("All skills verified and linked.")?;
     Ok(())
 }
 
 // --- HELPERS ---
 
-fn get_skills_dir(editor: &str) -> std::path::PathBuf {
-    match editor {
-        "antigravity" => Path::new(".antigravity/skills").to_path_buf(),
-        "vscode" => Path::new(".vscode/skills").to_path_buf(),
-        _ => Path::new(".cursor/skills").to_path_buf(), // Default
+fn calculate_hash(content: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(content);
+    hex::encode(hasher.finalize())
+}
+
+fn inject_reference(editor: &EditorType, skill_name: &str, skill_path: &Path) -> Result<()> {
+    let config_file = editor.config_file();
+    let current_content = if config_file.exists() { fs::read_to_string(&config_file)? } else { String::new() };
+    
+    let relative_path = skill_path.to_string_lossy();
+    
+    // Lógica específica por editor para inyección
+    let injection = match editor {
+        EditorType::Antigravity => format!("\n### Skill: {}\nRefer to logic in: `{}`\n", skill_name, relative_path),
+        EditorType::Cline | EditorType::Roo => format!("\nRunning context for {}: See {}\n", skill_name, relative_path),
+        _ => format!("\n- Skill ({}) -> Read file: {}\n", skill_name, relative_path),
+    };
+
+    if !current_content.contains(&format!("Skill: {}", skill_name)) && !current_content.contains(&format!("Skill ({})", skill_name)) {
+        use std::io::Write;
+        if let Some(parent) = config_file.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let mut file = fs::OpenOptions::new().append(true).create(true).open(&config_file)?;
+        write!(file, "{}", injection)?;
     }
+    Ok(())
 }
 
 fn load_config() -> Result<SkillConfig> {
     let content = fs::read_to_string("skills.json")?;
-    let config: SkillConfig = serde_json::from_str(&content)?;
-    Ok(config)
+    Ok(serde_json::from_str(&content)?)
 }
 
 fn save_config(config: &SkillConfig) -> Result<()> {
-    let content = serde_json::to_string_pretty(config)?;
-    fs::write("skills.json", content)?;
-    Ok(())
-}
-
-fn download_file(url: &str) -> Result<String> {
-    let resp = reqwest::blocking::get(url)?;
-    if !resp.status().is_success() {
-        anyhow::bail!("404 Not Found");
-    }
-    Ok(resp.text()?)
-}
-
-fn update_editor_config(editor: &str, skill_name: &str, path: &Path) -> Result<()> {
-    // Aquí implementas la lógica específica para inyectar en .cursorrules o .antigravity
-    // Ejemplo simple para cursor:
-    if editor == "cursor" {
-        let rule_file = Path::new(".cursorrules");
-        let line = format!("\n# Skill: {}\nReference: {}\n", skill_name, path.display());
-        
-        // Append
-        let mut file = fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(rule_file)?;
-        use std::io::Write;
-        write!(file, "{}", line)?;
-    }
+    fs::write("skills.json", serde_json::to_string_pretty(config)?)?;
     Ok(())
 }
