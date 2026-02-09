@@ -96,22 +96,29 @@ impl SecureHttpClient {
         };
 
         // Try each path until one works
-        let mut last_error = String::new();
+        let mut tried_urls = Vec::new();
 
         for path_in_repo in paths_to_try {
-            let target_url = format!("{}/main/{}", raw_base, path_in_repo);
-            
-            match self.download(&target_url) {
-                Ok(content) => {
-                    return Ok((content, path_in_repo));
-                }
-                Err(e) => {
-                    last_error = format!("{} ({})", target_url, e);
+            // Try both 'main' and 'master' branches
+            for branch in &["main", "master"] {
+                let target_url = format!("{}/{}/{}", raw_base, branch, path_in_repo);
+                tried_urls.push(target_url.clone());
+                
+                match self.download(&target_url) {
+                    Ok(content) => {
+                        return Ok((content, path_in_repo));
+                    }
+                    Err(_) => {
+                        // Continue to next branch/path
+                    }
                 }
             }
         }
 
-        bail!("Could not find skill '{}' in repository. Last error: {}", skill_name, last_error)
+        bail!("Could not find skill '{}' in repository. Tried {} locations. Last attempt: {}", 
+            skill_name, 
+            tried_urls.len(),
+            tried_urls.last().unwrap_or(&"none".to_string()))
     }
 }
 

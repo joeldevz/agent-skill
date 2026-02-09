@@ -134,15 +134,16 @@ fn cmd_init() -> Result<()> {
     let spin = spinner();
     spin.start("Installing memory skill...");
     
-    // Use the repository URL from registry
+    // Explicitly use the singular repository name
     let memory_repo = "https://github.com/joeldevz/agent-skill";
     let memory_skill = "memory";
     
-    if let Err(e) = cmd_add(memory_repo, memory_skill, None) {
-        log::warning(format!("Could not install memory skill: {}", e))?;
-        spin.stop("Memory skill installation skipped.");
-    } else {
-        spin.stop("Memory skill installed.");
+    match cmd_add(memory_repo, memory_skill, None) {
+        Ok(_) => spin.stop("Memory skill installed."),
+        Err(e) => {
+            log::warning(format!("Memory skill auto-install skipped: {}", e))?;
+            spin.stop("Memory skill installation skipped.");
+        }
     }
     
     outro_note(
