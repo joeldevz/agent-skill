@@ -6,9 +6,9 @@
     "skill_path": "find-skills"
   },
   {
-    "name":"memory-skills",
+    "name":"memory",
     "description": "Essential skill for file system navigation",
     "url": "https://github.com/joeldevz/agent-skills",
-    "skill_path": "memory-skills"
+    "skill_path": "memory"
   }
 ]
