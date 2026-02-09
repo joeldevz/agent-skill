@@ -57,6 +57,14 @@ pub enum MemoryCommands {
     Learn {
         /// The knowledge to remember
         text: String,
+
+        /// Category (preference, stack, correction, constraint, style)
+        #[arg(long, default_value = "preference")]
+        tag: String,
+
+        /// Importance (1-10)
+        #[arg(long, default_value = "5")]
+        priority: u8,
     },
     
     /// Remove a memory by ID

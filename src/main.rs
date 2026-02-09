@@ -7,7 +7,7 @@ mod memory;
 
 use anyhow::{Result, Context};
 use clap::Parser;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::fs;
 use cliclack::{intro, outro, log, spinner, confirm, outro_note};
 use console::style;
@@ -17,7 +17,8 @@ use editors::{EditorType, SkillConfig, default_store_path, load_config, save_con
 use network::SecureHttpClient;
 use store::{SkillStore, update_skill_in_config, remove_skill_from_config};
 use security::validate_skill_name;
-use memory::MemoryStore;
+use memory::{MemoryStore, MemoryTag};
+use std::str::FromStr;
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -121,7 +122,7 @@ fn cmd_init() -> Result<()> {
     spin.stop("Environment ready.");
     
     // Inject memory instructions into all editors
-    let memory_store = MemoryStore::new(&config.store_path)?;
+    let mut memory_store = MemoryStore::new(&config.store_path)?;
     let memory_context = memory_store.to_context_string();
     
     for editor in &selected_editors {
@@ -449,9 +450,10 @@ fn cmd_memory(command: &MemoryCommands) -> Result<()> {
     let mut memory_store = MemoryStore::new(&config.store_path)?;
 
     match command {
-        MemoryCommands::Learn { text } => {
+        MemoryCommands::Learn { text, tag, priority } => {
             log::info("Learning new memory...")?;
-            let id = memory_store.add_memory(text.clone(), "user-cli".to_string())?;
+            let tag_enum = MemoryTag::from_str(tag).unwrap_or(MemoryTag::Preference);
+            let id = memory_store.add_memory(text.clone(), "user-cli".to_string(), tag_enum, *priority)?;
             log::success(format!("Memory learned! [ID: {}]", id))?;
         },
         MemoryCommands::Forget { id } => {
@@ -468,9 +470,14 @@ fn cmd_memory(command: &MemoryCommands) -> Result<()> {
             if memories.is_empty() {
                 log::info("No memories found.")?;
             } else {
-                println!("\n🧠 Active Memories:");
+                println!("\n🧠 Active Memories (Sorted by Priority):");
                 for m in memories {
-                    println!("   • [{}] {}", style(&m.id).cyan(), m.content);
+                    println!("   • [{}] [{}] (Prio: {}) {}", 
+                        style(&m.id).cyan(), 
+                        style(m.tag.to_string()).yellow(),
+                        style(m.priority.to_string()).bold(),
+                        m.content
+                    );
                 }
                 println!();
             }
@@ -481,9 +488,14 @@ fn cmd_memory(command: &MemoryCommands) -> Result<()> {
             if results.is_empty() {
                 log::info("No matching memories found.")?;
             } else {
-                println!("\n🔍 Search Results:");
+                println!("\n🔍 Search Results (Sorted by Priority):");
                 for m in results {
-                    println!("   • [{}] {}", style(&m.id).cyan(), m.content);
+                    println!("   • [{}] [{}] (Prio: {}) {}", 
+                        style(&m.id).cyan(), 
+                        style(m.tag.to_string()).yellow(),
+                        style(m.priority.to_string()).bold(),
+                        m.content
+                    );
                 }
                 println!();
             }

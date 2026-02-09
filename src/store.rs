@@ -113,33 +113,6 @@ impl SkillStore {
         Ok(skill_file)
     }
 
-    /// List all installed skills
-    pub fn list_skills(&self) -> Result<Vec<String>> {
-        let mut skills = Vec::new();
-
-        if !self.base_path.exists() {
-            return Ok(skills);
-        }
-
-        for entry in fs::read_dir(&self.base_path)
-            .context("Failed to read store directory")? {
-            let entry = entry.context("Failed to read directory entry")?;
-            let path = entry.path();
-
-            if path.is_dir() {
-                if let Some(name) = path.file_name() {
-                    if let Some(name_str) = name.to_str() {
-                        // Validate it's a valid skill name
-                        if validate_skill_name(name_str).is_ok() {
-                            skills.push(name_str.to_string());
-                        }
-                    }
-                }
-            }
-        }
-
-        Ok(skills)
-    }
 }
 
 /// Update a skill in the configuration and store

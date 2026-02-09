@@ -139,10 +139,11 @@ pub fn validate_path_in_store(base_dir: &Path, target_path: &Path) -> Result<Pat
     
     let target = if target_path.is_absolute() {
         target_path.canonicalize()
-            .context("Failed to resolve target path")?
+            .unwrap_or_else(|_| target_path.to_path_buf())
     } else {
-        base.join(target_path).canonicalize()
-            .unwrap_or_else(|_| base.join(target_path))
+        let full_path = base.join(target_path);
+        full_path.canonicalize()
+            .unwrap_or_else(|_| full_path)
     };
 
     // Ensure target is within base
