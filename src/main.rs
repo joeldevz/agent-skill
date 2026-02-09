@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use strum::IntoEnumIterator;
 use strum_macros::{EnumIter, Display};
-use cliclack::{intro, outro, log, spinner, select, confirm, outro_note};
+use cliclack::{intro, outro, log, spinner, select, multiselect, confirm, outro_note};
 use console::style;
 use sha2::{Sha256, Digest};
 use chrono::Utc;
@@ -79,16 +79,26 @@ impl EditorType {
 
 #[derive(Serialize, Deserialize, Debug)]
 struct SkillConfig {
-    editor: EditorType,
+    #[serde(default)]
+    active_editors: Vec<EditorType>,
+    #[serde(default = "default_store_path")]
+    store_path: String,
     skills: HashMap<String, SkillEntry>,
+}
+
+fn default_store_path() -> String {
+    ".skillctl/store".to_string()
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct SkillEntry {
     url: String,
+    #[serde(rename = "relative_path")] // Map JSON's relative_path to local_path
     local_path: String,
-    hash: String,           // <--- INTEGRIDAD: SHA256 del contenido
-    last_updated: String,   // <--- TIMESTAMP
+    hash: String,
+    last_updated: String,
+    #[serde(default)]
+    installed_in: Vec<EditorType>, 
 }
 
 #[derive(Deserialize, Debug)]
@@ -153,24 +163,34 @@ fn main() -> Result<()> {
 fn init_project() -> Result<()> {
     if Path::new("skills.json").exists() {
         log::warning("skills.json already exists.")?;
-        outro("Skipping init.")?;
-        return Ok(());
+        let overwrite = confirm("Do you want to re-initialize? (This will overwrite skills.json)").interact()?;
+        if !overwrite {
+            outro("Skipping init.")?;
+            return Ok(());
+        }
     }
 
     log::info("Initializing secure skill environment.")?;
 
     let editors: Vec<EditorType> = EditorType::iter().collect();
-    // Creamos un vector de tuplas para el selector (Valor, Label, Descripcion)
+    // Convert to config format for multiselect
     let items: Vec<(EditorType, String, String)> = editors.iter()
         .map(|e| (e.clone(), e.to_string(), format!("Uses {}", e.skills_dir().display())))
         .collect();
 
-    let selected_editor = select("Which AI Editor are you using?")
+    // Use multiselect to allow multiple editors
+    let selected_editors: Vec<EditorType> = cliclack::multiselect("Which AI Editors are you using?")
         .items(&items)
         .interact()?;
 
+    if selected_editors.is_empty() {
+        outro("No editors selected. Exiting.")?;
+        return Ok(());
+    }
+
     let config = SkillConfig {
-        editor: selected_editor.clone(),
+        active_editors: selected_editors.clone(),
+        store_path: default_store_path(),
         skills: HashMap::new(),
     };
 
@@ -178,19 +198,32 @@ fn init_project() -> Result<()> {
     spin.start("Scaffolding directories...");
     
     save_config(&config)?;
-    fs::create_dir_all(selected_editor.skills_dir())?;
     
-    let rules_file = selected_editor.config_file();
-    if let Some(parent) = rules_file.parent() { fs::create_dir_all(parent)?; }
-    if !rules_file.exists() {
-        fs::write(&rules_file, format!("# AI Rules for {}\n", selected_editor))?;
+    // Create central store
+    fs::create_dir_all(&config.store_path)?;
+
+    // Setup each editor
+    for editor in &selected_editors {
+        // We don't necessarily need skills_dir for each editor if we are using a central store,
+        // BUT we might need it if we want to symlink/copy. 
+        // For now, let's just create the config file folder.
+        let rules_file = editor.config_file();
+        if let Some(parent) = rules_file.parent() { fs::create_dir_all(parent)?; }
+        
+        if !rules_file.exists() {
+            fs::write(&rules_file, format!("# AI Rules for {}\n", editor))?;
+        }
+        
+        // Ensure "skills" dir exists if we rely on it, though we are moving to store strategy.
+        // Let's create it just in case users want manual placement too.
+        fs::create_dir_all(editor.skills_dir())?;
     }
 
     spin.stop("Environment ready.");
     
     outro_note(
         style("Setup Complete").cyan(),
-        format!("Configured for {}. Try: npx skillctl search", selected_editor)
+        format!("Configured for {:?}. Try: npx skillctl search", selected_editors)
     )?;
     Ok(())
 }
@@ -230,17 +263,18 @@ fn add_skill_logic(repo_url: &str, skill_name: &str) -> Result<()> {
             }
         } else {
             log::info("Skill is up to date (Hash match).")?;
-            // Opcional: Salir si es igual, o forzar reescritura
         }
     }
 
-    // 5. Guardar archivo
+    // 5. Guardar archivo en Central Store
     let spin_write = spinner();
-    spin_write.start("Installing securely...");
+    spin_write.start("Installing securely to store...");
     
     let filename = "SKILL.md";
-    let local_path = config.editor.skills_dir().join(skill_name).join(filename);
-    fs::create_dir_all(local_path.parent().unwrap())?;
+    let store_dir = Path::new(&config.store_path).join(skill_name);
+    let local_path = store_dir.join(filename);
+    
+    fs::create_dir_all(&store_dir)?;
     fs::write(&local_path, &content)?;
 
     // 6. Actualizar Configuración
@@ -249,14 +283,17 @@ fn add_skill_logic(repo_url: &str, skill_name: &str) -> Result<()> {
         local_path: local_path.to_string_lossy().to_string(),
         hash: new_hash,
         last_updated: Utc::now().to_rfc3339(),
+        installed_in: config.active_editors.clone(),
     });
     save_config(&config)?;
 
-    // 7. Linkear
-    inject_reference(&config.editor, skill_name, &local_path)?;
+    // 7. Linkear para CADA editor activo
+    for editor in &config.active_editors {
+        inject_reference(editor, skill_name, &local_path)?;
+    }
 
     spin_write.stop("Installed.");
-    outro(format!("{} is now active.", style(skill_name).green()))?;
+    outro(format!("{} is now active for {:?}", style(skill_name).green(), config.active_editors))?;
 
     Ok(())
 }
@@ -337,6 +374,7 @@ fn list_skills() -> Result<()> {
 
 // --- COMANDO INSTALL (RESTORE) ---
 // --- COMANDO INSTALL (RESTORE) ---
+// --- COMANDO INSTALL (RESTORE) ---
 fn install_all() -> Result<()> {
     let config = load_config().context("Configuration not found. Please run 'skillctl init' first.")?;
     log::info(format!("Verifying {} skills...", config.skills.len()))?;
@@ -375,8 +413,10 @@ fn install_all() -> Result<()> {
             }
         }
 
-        // Siempre aseguramos el link
-        inject_reference(&config.editor, &name, local_path)?;
+        // Always check references for all active editors
+        for editor in &config.active_editors {
+            inject_reference(editor, &name, local_path)?;
+        }
     }
     outro("All skills verified and linked.")?;
     Ok(())
@@ -391,12 +431,28 @@ fn calculate_hash(content: &str) -> String {
 }
 
 fn inject_reference(editor: &EditorType, skill_name: &str, skill_path: &Path) -> Result<()> {
+    let relative_path = skill_path.to_string_lossy();
+    
+    // CASO ESPECIAL: Cursor usa ahora .cursor/rules/*.mdc
+    if let EditorType::Cursor = editor {
+        let rules_dir = Path::new(".cursor/rules");
+        fs::create_dir_all(rules_dir)?;
+
+        let rule_file = rules_dir.join(format!("{}.mdc", skill_name));
+        let content = format!(
+            "---\ndescription: Skill {}\nglobs: *\n---\n# {}\n\nRead logic from: {}\n",
+            skill_name,
+            skill_name,
+            relative_path
+        );
+        fs::write(&rule_file, content)?;
+        return Ok(());
+    }
+
     let config_file = editor.config_file();
     let current_content = if config_file.exists() { fs::read_to_string(&config_file)? } else { String::new() };
     
-    let relative_path = skill_path.to_string_lossy();
-    
-    // Lógica específica por editor para inyección
+    // Lógica específica por editor para inyección en archivo único
     let injection = match editor {
         EditorType::Antigravity => format!("\n### Skill: {}\nRefer to logic in: `{}`\n", skill_name, relative_path),
         EditorType::Cline | EditorType::Roo => format!("\nRunning context for {}: See {}\n", skill_name, relative_path),
@@ -404,11 +460,11 @@ fn inject_reference(editor: &EditorType, skill_name: &str, skill_path: &Path) ->
     };
 
     if !current_content.contains(&format!("Skill: {}", skill_name)) && !current_content.contains(&format!("Skill ({})", skill_name)) {
-        use std::io::Write;
         if let Some(parent) = config_file.parent() {
             fs::create_dir_all(parent)?;
         }
         let mut file = fs::OpenOptions::new().append(true).create(true).open(&config_file)?;
+        use std::io::Write;
         write!(file, "{}", injection)?;
     }
     Ok(())
