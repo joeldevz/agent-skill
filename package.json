@@ -1,6 +1,6 @@
 {
   "name": "skillctl", 
-  "version": "0.0.8",
+  "version": "0.0.9",
   "description": "Gestor de Skills para Agentes de IA",
   "bin": {
     "skillctl": "bin/run.js"

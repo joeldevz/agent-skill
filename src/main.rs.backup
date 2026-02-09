@@ -112,7 +112,7 @@ struct RegistryItem {
 
 // --- 3. CLI ARGUMENTS ---
 #[derive(Parser)]
-#[command(name = "skillctl", version = "0.0.8", about = "Secure AI Skill Manager")]
+#[command(name = "skillctl", version = "0.0.9", about = "Secure AI Skill Manager")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,

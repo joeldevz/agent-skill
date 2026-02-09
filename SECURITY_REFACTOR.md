@@ -167,7 +167,7 @@ fn test_invalid_skill_name() {
 
 ## 📊 Comparación: Antes vs Ahora
 
-| Aspecto                     | v0.0.8 (Antes) | v0.0.9 (Ahora)              | Mejora |
+| Aspecto                     | v0.0.9 (Antes) | v0.0.9 (Ahora)              | Mejora |
 | --------------------------- | -------------- | --------------------------- | ------ |
 | **Validación de nombres**   | ❌ Ninguna     | ✅ Estricta                 | 🔒     |
 | **Validación de URLs**      | ❌ Ninguna     | ✅ Whitelist + IP blocking  | 🔒     |
