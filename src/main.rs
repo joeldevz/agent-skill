@@ -7,7 +7,7 @@ mod memory;
 
 use anyhow::{Result, Context};
 use clap::Parser;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::fs;
 use cliclack::{intro, outro, log, spinner, confirm, outro_note};
 use console::style;
@@ -119,6 +119,31 @@ fn cmd_init() -> Result<()> {
     }
 
     spin.stop("Environment ready.");
+    
+    // Inject memory instructions into all editors
+    let memory_store = MemoryStore::new(&config.store_path)?;
+    let memory_context = memory_store.to_context_string();
+    
+    for editor in &selected_editors {
+        if let Err(e) = inject_memory_context(editor, &memory_context) {
+            log::warning(format!("Could not inject memory context for {}: {}", editor, e))?;
+        }
+    }
+    
+    // Install the built-in memory skill from repository
+    let spin = spinner();
+    spin.start("Installing memory skill...");
+    
+    // Use the repository URL from registry
+    let memory_repo = "https://github.com/joeldevz/agent-skills";
+    let memory_skill = "memory-skills";
+    
+    if let Err(e) = cmd_add(memory_repo, memory_skill, None) {
+        log::warning(format!("Could not install memory skill: {}", e))?;
+        spin.stop("Memory skill installation skipped.");
+    } else {
+        spin.stop("Memory skill installed.");
+    }
     
     outro_note(
         style("Setup Complete").cyan(),
@@ -350,7 +375,7 @@ fn cmd_search() -> Result<()> {
     let spin = spinner();
     spin.start("Fetching registry...");
     
-    let registry_url = "https://raw.githubusercontent.com/joeldevz/agent-skills/main/registry.json";
+    let registry_url = "https://raw.githubusercontent.com/joeldevz/agent-skill/refs/heads/main/registry.json";
     
     let client = SecureHttpClient::new()?;
     let content = client.download(registry_url)?;

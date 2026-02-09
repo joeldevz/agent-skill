@@ -98,13 +98,14 @@ impl MemoryStore {
     
     /// Format memories for injection into AI context
     pub fn to_context_string(&self) -> String {
-        if self.memories.is_empty() {
-            return String::new();
-        }
-
         let mut output = String::from("\n# 🧠 Active Memory Context\n\n");
-        for memory in &self.memories {
-            output.push_str(&format!("- [ID: {}] {}\n", memory.id, memory.content));
+        
+        if self.memories.is_empty() {
+            output.push_str("No memories stored yet.\n");
+        } else {
+            for memory in &self.memories {
+                output.push_str(&format!("- [ID: {}] {}\n", memory.id, memory.content));
+            }
         }
         
         output.push_str("\n# 🛠️ Memory Tools\n");
