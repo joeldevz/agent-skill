@@ -135,8 +135,8 @@ fn cmd_init() -> Result<()> {
     spin.start("Installing memory skill...");
     
     // Use the repository URL from registry
-    let memory_repo = "https://github.com/joeldevz/agent-skills";
-    let memory_skill = "memory-skills";
+    let memory_repo = "https://github.com/joeldevz/agent-skill";
+    let memory_skill = "memory";
     
     if let Err(e) = cmd_add(memory_repo, memory_skill, None) {
         log::warning(format!("Could not install memory skill: {}", e))?;
