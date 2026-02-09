@@ -26,7 +26,7 @@ impl EditorType {
         match self {
             EditorType::Cursor => PathBuf::from(".cursorrules"),
             EditorType::Windsurf => PathBuf::from(".windsurfrules"),
-            EditorType::Antigravity => PathBuf::from(".antigravity"),
+            EditorType::Antigravity => PathBuf::from(".agent/rules.md"),
             EditorType::ClaudeCode => PathBuf::from(".claude/config"),
             EditorType::Cline => PathBuf::from(".cline/config"),
             EditorType::Roo => PathBuf::from(".roo/config"),
